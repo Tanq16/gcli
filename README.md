@@ -1,5 +1,5 @@
 <div align="center">
-  <img src=".github/assets/logo.png" alt="gdrive Logo" width="200">
+  <img src=".github/assets/logo.svg" alt="gdrive Logo" width="200">
   <h1>gdrive</h1>
 
   <a href="https://github.com/tanq16/gdrive/actions/workflows/release.yaml"><img alt="Build Workflow" src="https://github.com/tanq16/gdrive/actions/workflows/release.yaml/badge.svg"></a>&nbsp;<a href="https://github.com/tanq16/gdrive/releases"><img alt="GitHub Release" src="https://img.shields.io/github/v/release/tanq16/gdrive"></a><br><br>
