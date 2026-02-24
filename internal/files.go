@@ -1,0 +1,65 @@
+package gdrive
+
+import (
+	drive "google.golang.org/api/drive/v3"
+)
+
+// GetFile retrieves a file's metadata by ID
+func GetFile(fileID string) (*drive.File, error) {
+	f, err := Service.Files.Get(fileID).
+		Fields(FileFields()).
+		SupportsAllDrives(true).
+		Do()
+	if err != nil {
+		return nil, HandleError(err)
+	}
+	return f, nil
+}
+
+// DeleteFile permanently deletes a file by ID
+func DeleteFile(fileID string) error {
+	err := Service.Files.Delete(fileID).
+		SupportsAllDrives(true).
+		Do()
+	if err != nil {
+		return HandleError(err)
+	}
+	return nil
+}
+
+// CopyFile copies a file to a new location with an optional new name
+func CopyFile(fileID string, name string, parentID string) (*drive.File, error) {
+	meta := &drive.File{
+		Name:    name,
+		Parents: []string{parentID},
+	}
+	copied, err := Service.Files.Copy(fileID, meta).
+		Fields(FileFields()).
+		SupportsAllDrives(true).
+		Do()
+	if err != nil {
+		return nil, HandleError(err)
+	}
+	return copied, nil
+}
+
+// MoveFile moves a file to a new parent and/or renames it
+func MoveFile(fileID string, newName string, currentParentID string, newParentID string) (*drive.File, error) {
+	meta := &drive.File{}
+	if newName != "" {
+		meta.Name = newName
+	}
+	call := Service.Files.Update(fileID, meta).
+		Fields(FileFields()).
+		SupportsAllDrives(true)
+
+	if newParentID != "" && newParentID != currentParentID {
+		call = call.AddParents(newParentID).RemoveParents(currentParentID)
+	}
+
+	moved, err := call.Do()
+	if err != nil {
+		return nil, HandleError(err)
+	}
+	return moved, nil
+}
