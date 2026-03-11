@@ -2,11 +2,16 @@ package mailCmd
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/tanq16/gdrive/internal/mail"
 	u "github.com/tanq16/gdrive/utils"
 )
+
+var getFlags struct {
+	withQuote bool
+}
 
 var getCmd = &cobra.Command{
 	Use:   "get <thread-id>",
@@ -25,7 +30,11 @@ var getCmd = &cobra.Command{
 			date := mail.ExtractHeader(msg, "Date")
 			u.PrintGeneric(fmt.Sprintf("From: %s  |  Date: %s", from, date))
 			u.PrintGeneric("")
-			u.PrintGeneric(mail.ExtractBody(msg))
+			body := mail.ExtractBody(msg)
+			if !getFlags.withQuote {
+				body = stripQuotedText(body)
+			}
+			u.PrintGeneric(body)
 			u.PrintGeneric("")
 		}
 	},
@@ -33,4 +42,24 @@ var getCmd = &cobra.Command{
 
 func init() {
 	MailCmd.AddCommand(getCmd)
+	getCmd.Flags().BoolVar(&getFlags.withQuote, "with-quote", false, "Include quoted/block-quoted text in output")
+}
+
+func stripQuotedText(body string) string {
+	lines := strings.Split(body, "\n")
+	var result []string
+	for _, line := range lines {
+		if strings.HasPrefix(line, ">") || strings.HasPrefix(line, "&gt;") {
+			continue
+		}
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "On ") && strings.Contains(trimmed, " wrote:") {
+			break
+		}
+		if strings.HasPrefix(trimmed, "________") {
+			break
+		}
+		result = append(result, line)
+	}
+	return strings.TrimRight(strings.Join(result, "\n"), "\n ")
 }

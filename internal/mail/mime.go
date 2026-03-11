@@ -79,9 +79,12 @@ func extractBody(part *gmail.MessagePart) string {
 }
 
 func decodeBase64URL(s string) (string, error) {
-	data, err := base64.URLEncoding.WithPadding(base64.NoPadding).DecodeString(s)
+	data, err := base64.URLEncoding.DecodeString(s)
 	if err != nil {
-		return "", err
+		data, err = base64.URLEncoding.WithPadding(base64.NoPadding).DecodeString(s)
+		if err != nil {
+			return "", err
+		}
 	}
 	return string(data), nil
 }
