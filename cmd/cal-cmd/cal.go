@@ -2,8 +2,8 @@ package calCmd
 
 import (
 	"github.com/spf13/cobra"
-	"github.com/tanq16/gdrive/internal/auth"
-	"github.com/tanq16/gdrive/internal/cal"
+	"github.com/tanq16/gcli/internal/auth"
+	"github.com/tanq16/gcli/internal/cal"
 )
 
 // CalCmd is the parent command for all Google Calendar operations
@@ -15,7 +15,6 @@ var CalCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		debug, _ := cmd.Root().PersistentFlags().GetBool("debug")
-		return cal.Init(client, debug)
+		return cal.Init(client)
 	},
 }

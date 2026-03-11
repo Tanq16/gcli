@@ -56,6 +56,11 @@ func ReplyMessage(threadID string, body string, contentType string, replyAll boo
 		if origCc != "" {
 			cc = parseAddresses(origCc)
 		}
+		myEmail := getMyEmail()
+		if myEmail != "" {
+			to = filterSelf(to, myEmail)
+			cc = filterSelf(cc, myEmail)
+		}
 	} else {
 		to = parseAddresses(from)
 	}
@@ -127,6 +132,28 @@ func ForwardMessage(threadID string, to []string, note string, contentType strin
 	}
 
 	return SendMessage(opts)
+}
+
+func getMyEmail() string {
+	profile, err := Service.Users.GetProfile("me").Do()
+	if err != nil {
+		return ""
+	}
+	return strings.ToLower(profile.EmailAddress)
+}
+
+func filterSelf(addrs []string, myEmail string) []string {
+	var filtered []string
+	for _, a := range addrs {
+		email := strings.ToLower(a)
+		if idx := strings.Index(email, "<"); idx >= 0 {
+			email = strings.TrimRight(email[idx+1:], ">")
+		}
+		if strings.TrimSpace(email) != myEmail {
+			filtered = append(filtered, a)
+		}
+	}
+	return filtered
 }
 
 func parseAddresses(s string) []string {

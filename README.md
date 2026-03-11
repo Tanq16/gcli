@@ -1,46 +1,49 @@
 <div align="center">
-  <img src=".github/assets/logo.svg" alt="gdrive Logo" width="200">
-  <h1>gdrive</h1>
+  <img src=".github/assets/logo.svg" alt="gcli Logo" width="200">
+  <h1>gcli</h1>
 
-  <a href="https://github.com/tanq16/gdrive/actions/workflows/release.yaml"><img alt="Build Workflow" src="https://github.com/tanq16/gdrive/actions/workflows/release.yaml/badge.svg"></a>&nbsp;<a href="https://github.com/tanq16/gdrive/releases"><img alt="GitHub Release" src="https://img.shields.io/github/v/release/tanq16/gdrive"></a><br><br>
+  <a href="https://github.com/tanq16/gcli/actions/workflows/release.yaml"><img alt="Build Workflow" src="https://github.com/tanq16/gcli/actions/workflows/release.yaml/badge.svg"></a>&nbsp;<a href="https://github.com/tanq16/gcli/releases"><img alt="GitHub Release" src="https://img.shields.io/github/v/release/tanq16/gcli"></a><br><br>
   <a href="#capabilities">Capabilities</a> &bull; <a href="#installation">Installation</a> &bull; <a href="#usage">Usage</a> &bull; <a href="#tips-and-notes">Tips & Notes</a>
 </div>
 
 ---
 
-CLI tool for Google Drive file operations. Browse, upload, download, sync, search, and manage permissions from the terminal.
+CLI tool for Google Drive, Gmail, and Calendar. Manage files, threads, and events from the terminal.
 
 ## Capabilities
 
-| Category | Commands | Description |
-|----------|----------|-------------|
-| Auth | `login` | OAuth2 authentication with Google Drive |
-| Browse | `list`, `info` | List folder contents, view file metadata |
-| Transfer | `upload`, `download` | Upload/download files and folders with progress |
-| Manage | `mkdir`, `move`, `copy`, `delete` | File and folder management |
-| Search | `search` | Server-side search with filters |
-| Sync | `sync push`, `sync pull` | Bidirectional directory sync with concurrency |
-| Index | `index`, `index search` | Build offline index and search with regex |
-| Permissions | `permissions list/create/delete` | Manage file sharing permissions |
+| Service | Commands | Description |
+|---------|----------|-------------|
+| Auth | `login` | OAuth2 authentication with Google services |
+| Drive | `list`, `info`, `search` | Browse folder contents, view metadata, search files |
+| Drive | `upload`, `download` | Transfer files and folders with progress |
+| Drive | `mkdir`, `move`, `copy`, `delete` | File and folder management |
+| Drive | `sync push`, `sync pull` | Bidirectional directory sync with concurrency |
+| Drive | `permissions list/create/delete` | Manage file sharing permissions |
+| Mail | `list`, `get`, `search` | List, view, and search Gmail threads |
+| Mail | `send`, `reply`, `forward` | Compose, reply, and forward with attachments and signatures |
+| Mail | `mark read/unread/star/unstar/archive/trash/spam` | Thread state management |
+| Calendar | `list`, `get`, `calendars` | View events and calendars |
+| Calendar | `create`, `edit`, `delete` | Manage calendar events with attendees |
 
 ## Installation
 
 ### Binary
 
-Download from [releases](https://github.com/tanq16/gdrive/releases):
+Download from [releases](https://github.com/tanq16/gcli/releases):
 
 ```bash
 # Linux/macOS
-curl -sL https://github.com/tanq16/gdrive/releases/latest/download/gdrive-$(uname -s)-$(uname -m) -o gdrive
-chmod +x gdrive
-sudo mv gdrive /usr/local/bin/
+curl -sL https://github.com/tanq16/gcli/releases/latest/download/gcli-$(uname -s)-$(uname -m) -o gcli
+chmod +x gcli
+sudo mv gcli /usr/local/bin/
 ```
 
 ### Build from Source
 
 ```bash
-git clone https://github.com/tanq16/gdrive
-cd gdrive
+git clone https://github.com/tanq16/gcli
+cd gcli
 make build
 ```
 
@@ -49,47 +52,74 @@ make build
 ### Setup
 
 1. Create OAuth credentials in [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
-2. Download the client secret JSON to `~/.config/gdrive/credentials.json`
-3. Run `gdrive login` to authenticate
+2. Download the client secret JSON to `~/.config/gcli/credentials.json`
+3. Run `gcli login` to authenticate
 
-### Commands
+### Drive
 
 ```bash
-# Browse
-gdrive list /Documents
-gdrive info /Documents/report.pdf
+gcli drive list /Documents
+gcli drive info /Documents/report.pdf
+gcli drive search "quarterly report" --type file --limit 20
 
-# Transfer
-gdrive upload ./local-file.pdf /Documents/
-gdrive download /Documents/report.pdf ./
+gcli drive upload ./local-file.pdf /Documents/
+gcli drive download /Documents/report.pdf ./
 
-# Manage
-gdrive mkdir /Documents/NewFolder
-gdrive move /Documents/file.pdf /Archive/
-gdrive copy /Documents/file.pdf /Backup/ --name file-copy.pdf
-gdrive delete /Documents/old-file.pdf
+gcli drive mkdir /Documents/NewFolder
+gcli drive move /Documents/file.pdf /Archive/
+gcli drive copy /Documents/file.pdf /Backup/ --name file-copy.pdf
+gcli drive delete /Documents/old-file.pdf
 
-# Search
-gdrive search "quarterly report" --type file --limit 20
+gcli drive sync push ./local-dir /Documents/remote-dir --concurrency 8
+gcli drive sync pull /Documents/remote-dir ./local-dir
 
-# Sync
-gdrive sync push ./local-dir /Documents/remote-dir --concurrency 8
-gdrive sync pull /Documents/remote-dir ./local-dir
-
-# Index
-gdrive index /Documents
-gdrive index search "\.pdf$"
-
-# Permissions
-gdrive permissions list /Documents/shared-file.pdf
-gdrive permissions create /Documents/file.pdf --type user --role reader --email user@example.com
+gcli drive permissions list /Documents/shared-file.pdf
+gcli drive permissions create /Documents/file.pdf --type user --role reader --email user@example.com
 ```
 
-All commands accept `--id` flag to use Drive file IDs directly instead of paths.
+### Mail
+
+```bash
+gcli mail list                     # Recent inbox threads
+gcli mail list 5 --unread          # 5 unread threads
+gcli mail list --label SENT        # Sent threads
+gcli mail get <thread-id>          # All messages in a thread
+gcli mail search "from:user@example.com"
+
+gcli mail send -t recipient@example.com -s "Subject"
+gcli mail send -t recipient@example.com -s "Subject" --body-file email.html
+gcli mail reply <thread-id>
+gcli mail reply <thread-id> --all
+gcli mail forward <thread-id> -t other@example.com
+
+gcli mail mark read <thread-id>
+gcli mail mark unread <thread-id>
+gcli mail mark star <thread-id>
+gcli mail mark archive <thread-id>
+gcli mail mark trash <thread-id>
+```
+
+### Calendar
+
+```bash
+gcli cal list                      # Today's events
+gcli cal list 7                    # Next 7 days
+gcli cal list --all-calendars      # Events from all calendars
+gcli cal get <event-id>
+gcli cal calendars                 # List all calendars with IDs
+
+gcli cal create "Team standup" --start "tomorrow 9am" --duration 30m
+gcli cal create "Launch party" --start "2025-06-01T18:00" --end "2025-06-01T21:00" --location "Office"
+gcli cal edit <event-id> --add-attendee user@example.com
+gcli cal delete <event-id> --notify
+```
 
 ## Tips and Notes
 
-- Use `--debug` flag for structured log output with full error details
-- Path resolution requires one API call per segment; use `--id` for faster scripted access
+- All drive commands accept `--id` flag to use Drive file IDs directly instead of paths
+- Use `--debug` for structured log output with full error details
+- Use `--for-ai` for plain text output suitable for piping to other tools
+- Gmail operates on threads (not individual messages), matching the Gmail UI
+- Email signatures are supported via `--signature` flag on send/reply/forward
 - Google Workspace files (Docs, Sheets, Slides) are automatically exported on download
 - Sync skips Google Workspace native files (no checksum available)

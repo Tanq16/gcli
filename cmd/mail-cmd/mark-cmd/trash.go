@@ -2,8 +2,8 @@ package markCmd
 
 import (
 	"github.com/spf13/cobra"
-	"github.com/tanq16/gdrive/internal/mail"
-	u "github.com/tanq16/gdrive/utils"
+	"github.com/tanq16/gcli/internal/mail"
+	u "github.com/tanq16/gcli/utils"
 )
 
 var trashCmd = &cobra.Command{

@@ -2,9 +2,9 @@ package driveCmd
 
 import (
 	"github.com/spf13/cobra"
-	syncCmd "github.com/tanq16/gdrive/cmd/drive-cmd/sync-cmd"
-	"github.com/tanq16/gdrive/internal/auth"
-	"github.com/tanq16/gdrive/internal/drive"
+	syncCmd "github.com/tanq16/gcli/cmd/drive-cmd/sync-cmd"
+	"github.com/tanq16/gcli/internal/auth"
+	"github.com/tanq16/gcli/internal/drive"
 )
 
 func init() {
@@ -20,7 +20,6 @@ var DriveCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		debug, _ := cmd.Root().PersistentFlags().GetBool("debug")
-		return drive.Init(client, debug)
+		return drive.Init(client)
 	},
 }

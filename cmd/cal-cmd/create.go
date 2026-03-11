@@ -4,8 +4,8 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/tanq16/gdrive/internal/cal"
-	u "github.com/tanq16/gdrive/utils"
+	"github.com/tanq16/gcli/internal/cal"
+	u "github.com/tanq16/gcli/utils"
 	"google.golang.org/api/calendar/v3"
 )
 

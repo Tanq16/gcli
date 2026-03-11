@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	u "github.com/tanq16/gdrive/utils"
+	u "github.com/tanq16/gcli/utils"
 	driveapi "google.golang.org/api/drive/v3"
 )
 

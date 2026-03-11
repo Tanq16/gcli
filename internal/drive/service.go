@@ -14,17 +14,13 @@ import (
 // Service is the authenticated Drive service, set during PersistentPreRunE
 var Service *driveapi.Service
 
-// Debug indicates whether debug logging is enabled
-var Debug bool
-
 // Init creates a Drive service from an authenticated HTTP client and stores it
-func Init(client *http.Client, debug bool) error {
+func Init(client *http.Client) error {
 	srv, err := driveapi.NewService(context.Background(), option.WithHTTPClient(client))
 	if err != nil {
 		return fmt.Errorf("failed to create Drive service: %w", err)
 	}
 	Service = srv
-	Debug = debug
 	return nil
 }
 

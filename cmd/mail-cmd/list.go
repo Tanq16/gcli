@@ -1,12 +1,13 @@
 package mailCmd
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 
 	"github.com/spf13/cobra"
-	"github.com/tanq16/gdrive/internal/mail"
-	u "github.com/tanq16/gdrive/utils"
+	"github.com/tanq16/gcli/internal/mail"
+	u "github.com/tanq16/gcli/utils"
 )
 
 var listFlags struct {
@@ -28,7 +29,7 @@ var listCmd = &cobra.Command{
 			count = n
 		}
 
-		threads, err := mail.ListThreads(listFlags.label, listFlags.unread, count)
+		threads, err := mail.ListThreads(context.Background(), listFlags.label, listFlags.unread, count)
 		if err != nil {
 			u.PrintFatal("failed to list threads", err)
 		}

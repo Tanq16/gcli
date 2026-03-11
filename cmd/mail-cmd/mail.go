@@ -2,9 +2,9 @@ package mailCmd
 
 import (
 	"github.com/spf13/cobra"
-	markCmd "github.com/tanq16/gdrive/cmd/mail-cmd/mark-cmd"
-	"github.com/tanq16/gdrive/internal/auth"
-	"github.com/tanq16/gdrive/internal/mail"
+	markCmd "github.com/tanq16/gcli/cmd/mail-cmd/mark-cmd"
+	"github.com/tanq16/gcli/internal/auth"
+	"github.com/tanq16/gcli/internal/mail"
 )
 
 func init() {
@@ -19,7 +19,6 @@ var MailCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		debug, _ := cmd.Root().PersistentFlags().GetBool("debug")
-		return mail.Init(client, debug)
+		return mail.Init(client)
 	},
 }

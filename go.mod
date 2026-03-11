@@ -1,4 +1,4 @@
-module github.com/tanq16/gdrive
+module github.com/tanq16/gcli
 
 go 1.25.0
 

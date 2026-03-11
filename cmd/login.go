@@ -2,8 +2,8 @@ package cmd
 
 import (
 	"github.com/spf13/cobra"
-	"github.com/tanq16/gdrive/internal/auth"
-	u "github.com/tanq16/gdrive/utils"
+	"github.com/tanq16/gcli/internal/auth"
+	u "github.com/tanq16/gcli/utils"
 )
 
 var loginCmd = &cobra.Command{

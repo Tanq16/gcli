@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	u "github.com/tanq16/gdrive/utils"
+	u "github.com/tanq16/gcli/utils"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/calendar/v3"

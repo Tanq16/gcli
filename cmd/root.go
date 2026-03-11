@@ -8,10 +8,10 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
-	calCmd "github.com/tanq16/gdrive/cmd/cal-cmd"
-	driveCmd "github.com/tanq16/gdrive/cmd/drive-cmd"
-	mailCmd "github.com/tanq16/gdrive/cmd/mail-cmd"
-	u "github.com/tanq16/gdrive/utils"
+	calCmd "github.com/tanq16/gcli/cmd/cal-cmd"
+	driveCmd "github.com/tanq16/gcli/cmd/drive-cmd"
+	mailCmd "github.com/tanq16/gcli/cmd/mail-cmd"
+	u "github.com/tanq16/gcli/utils"
 )
 
 var AppVersion = "dev-build"

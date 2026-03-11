@@ -11,15 +11,13 @@ import (
 )
 
 var Service *gmail.Service
-var Debug bool
 
-func Init(client *http.Client, debug bool) error {
+func Init(client *http.Client) error {
 	srv, err := gmail.NewService(context.Background(), option.WithHTTPClient(client))
 	if err != nil {
 		return fmt.Errorf("failed to create Gmail service: %w", err)
 	}
 	Service = srv
-	Debug = debug
 	return nil
 }
 

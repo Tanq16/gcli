@@ -1,11 +1,12 @@
 package mailCmd
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/spf13/cobra"
-	"github.com/tanq16/gdrive/internal/mail"
-	u "github.com/tanq16/gdrive/utils"
+	"github.com/tanq16/gcli/internal/mail"
+	u "github.com/tanq16/gcli/utils"
 )
 
 var searchFlags struct {
@@ -17,7 +18,7 @@ var searchCmd = &cobra.Command{
 	Short: "Search threads using Gmail search syntax",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		threads, err := mail.SearchThreads(args[0], searchFlags.max)
+		threads, err := mail.SearchThreads(context.Background(), args[0], searchFlags.max)
 		if err != nil {
 			u.PrintFatal("search failed", err)
 		}

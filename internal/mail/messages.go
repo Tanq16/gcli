@@ -1,6 +1,7 @@
 package mail
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"sync"
@@ -20,7 +21,7 @@ type ThreadSummary struct {
 	MessageCount int
 }
 
-func ListThreads(label string, unread bool, count int64) ([]ThreadSummary, error) {
+func ListThreads(ctx context.Context, label string, unread bool, count int64) ([]ThreadSummary, error) {
 	call := Service.Users.Threads.List("me").LabelIds(label).MaxResults(count)
 	if unread {
 		call = call.Q("is:unread")
@@ -31,16 +32,16 @@ func ListThreads(label string, unread bool, count int64) ([]ThreadSummary, error
 		return nil, HandleError(err)
 	}
 
-	return fetchThreadSummaries(resp.Threads)
+	return fetchThreadSummaries(ctx, resp.Threads)
 }
 
-func SearchThreads(query string, max int64) ([]ThreadSummary, error) {
+func SearchThreads(ctx context.Context, query string, max int64) ([]ThreadSummary, error) {
 	resp, err := Service.Users.Threads.List("me").Q(query).MaxResults(max).Do()
 	if err != nil {
 		return nil, HandleError(err)
 	}
 
-	return fetchThreadSummaries(resp.Threads)
+	return fetchThreadSummaries(ctx, resp.Threads)
 }
 
 func GetThread(id string) (*gmail.Thread, error) {
@@ -74,17 +75,20 @@ func GetLastMessageInThread(threadID string) (*gmail.Message, error) {
 	return msgs[len(msgs)-1], nil
 }
 
-func fetchThreadSummaries(threads []*gmail.Thread) ([]ThreadSummary, error) {
+func fetchThreadSummaries(ctx context.Context, threads []*gmail.Thread) ([]ThreadSummary, error) {
 	summaries := make([]ThreadSummary, len(threads))
 	var mu sync.Mutex
-	g := errgroup.Group{}
+	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(10)
 
 	for i, t := range threads {
-		idx := i
-		id := t.Id
 		g.Go(func() error {
-			thread, err := GetThreadMetadata(id)
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+			}
+			thread, err := GetThreadMetadata(t.Id)
 			if err != nil {
 				return err
 			}
@@ -113,7 +117,7 @@ func fetchThreadSummaries(threads []*gmail.Thread) ([]ThreadSummary, error) {
 			dateStr := extractHeader(last, "Date")
 
 			mu.Lock()
-			summaries[idx] = ThreadSummary{
+			summaries[i] = ThreadSummary{
 				ID:           thread.Id,
 				From:         formatFrom(from),
 				Subject:      subject,
