@@ -1,9 +1,9 @@
-package cmd
+package driveCmd
 
 import (
 	"github.com/spf13/cobra"
-	gdrive "github.com/tanq16/gdrive/internal"
-	"github.com/tanq16/gdrive/internal/ui"
+	"github.com/tanq16/gdrive/internal/drive"
+	u "github.com/tanq16/gdrive/utils"
 )
 
 var deleteFlags struct {
@@ -15,20 +15,20 @@ var deleteCmd = &cobra.Command{
 	Short: "Delete a file or folder",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		f, err := gdrive.ResolveOrID(args[0], deleteFlags.id)
+		f, err := drive.ResolveOrID(args[0], deleteFlags.id)
 		if err != nil {
-			ui.PrintFatal("failed to resolve path", err)
+			u.PrintFatal("failed to resolve path", err)
 		}
 
-		if err := gdrive.DeleteFile(f.Id); err != nil {
-			ui.PrintFatal("failed to delete "+f.Name, err)
+		if err := drive.DeleteFile(f.Id); err != nil {
+			u.PrintFatal("failed to delete "+f.Name, err)
 		}
 
-		ui.PrintSuccess("deleted " + f.Name)
+		u.PrintSuccess("deleted " + f.Name)
 	},
 }
 
 func init() {
-	rootCmd.AddCommand(deleteCmd)
+	DriveCmd.AddCommand(deleteCmd)
 	deleteCmd.Flags().StringVar(&deleteFlags.id, "id", "", "Use file ID instead of path")
 }

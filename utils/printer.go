@@ -1,4 +1,4 @@
-package ui
+package utils
 
 import (
 	"fmt"
@@ -8,8 +8,6 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-var debug bool
-
 var (
 	infoStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("12")) // bright blue
 	successStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("10")) // bright green
@@ -17,15 +15,12 @@ var (
 	warnStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("11")) // bright yellow
 )
 
-// Init sets the debug mode for the UI package
-func Init(debugMode bool) {
-	debug = debugMode
-}
-
 // PrintInfo prints an info message in blue
 func PrintInfo(msg string) {
-	if debug {
-		log.Info().Msg(msg)
+	if GlobalDebugFlag {
+		log.Info().Str("package", "utils").Msg(msg)
+	} else if GlobalForAIFlag {
+		fmt.Println("[INFO] " + msg)
 	} else {
 		fmt.Println(infoStyle.Render("→ " + msg))
 	}
@@ -33,26 +28,42 @@ func PrintInfo(msg string) {
 
 // PrintSuccess prints a success message in green
 func PrintSuccess(msg string) {
-	if debug {
-		log.Info().Msg(msg)
+	if GlobalDebugFlag {
+		log.Info().Str("package", "utils").Msg(msg)
+	} else if GlobalForAIFlag {
+		fmt.Println("[OK] " + msg)
 	} else {
 		fmt.Println(successStyle.Render("✓ " + msg))
 	}
 }
 
 // PrintError prints an error message in red (does not exit)
+// Only --debug shows the underlying error; human and AI modes show only the friendly message
 func PrintError(msg string, err error) {
-	if debug && err != nil {
-		log.Error().Err(err).Msg(msg)
+	if GlobalDebugFlag {
+		if err != nil {
+			log.Error().Str("package", "utils").Err(err).Msg(msg)
+		} else {
+			log.Error().Str("package", "utils").Msg(msg)
+		}
+	} else if GlobalForAIFlag {
+		fmt.Println("[ERROR] " + msg)
 	} else {
 		fmt.Println(errorStyle.Render("✗ " + msg))
 	}
 }
 
 // PrintFatal prints an error message and exits
+// Only --debug shows the underlying error; human and AI modes show only the friendly message
 func PrintFatal(msg string, err error) {
-	if debug && err != nil {
-		log.Error().Err(err).Msg(msg)
+	if GlobalDebugFlag {
+		if err != nil {
+			log.Error().Str("package", "utils").Err(err).Msg(msg)
+		} else {
+			log.Error().Str("package", "utils").Msg(msg)
+		}
+	} else if GlobalForAIFlag {
+		fmt.Println("[ERROR] " + msg)
 	} else {
 		fmt.Println(errorStyle.Render("✗ " + msg))
 	}
@@ -60,9 +71,16 @@ func PrintFatal(msg string, err error) {
 }
 
 // PrintWarn prints a warning message in yellow
+// Only --debug shows the underlying error; human and AI modes show only the friendly message
 func PrintWarn(msg string, err error) {
-	if debug && err != nil {
-		log.Warn().Err(err).Msg(msg)
+	if GlobalDebugFlag {
+		if err != nil {
+			log.Warn().Str("package", "utils").Err(err).Msg(msg)
+		} else {
+			log.Warn().Str("package", "utils").Msg(msg)
+		}
+	} else if GlobalForAIFlag {
+		fmt.Println("[WARN] " + msg)
 	} else {
 		fmt.Println(warnStyle.Render("! " + msg))
 	}

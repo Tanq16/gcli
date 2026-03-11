@@ -2,29 +2,26 @@ package cmd
 
 import (
 	"github.com/spf13/cobra"
-	gdrive "github.com/tanq16/gdrive/internal"
-	"github.com/tanq16/gdrive/internal/ui"
+	"github.com/tanq16/gdrive/internal/auth"
+	u "github.com/tanq16/gdrive/utils"
 )
 
 var loginCmd = &cobra.Command{
 	Use:   "login",
-	Short: "Authenticate with Google Drive",
-	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		// No-op: skip auth init for login command
-	},
+	Short: "Authenticate with Google services",
 	Run: func(cmd *cobra.Command, args []string) {
-		config, err := gdrive.LoadCredentials()
+		config, err := auth.LoadCredentials()
 		if err != nil {
-			ui.PrintFatal("failed to load credentials", err)
+			u.PrintFatal("failed to load credentials", err)
 		}
 
-		token, err := gdrive.Login(config)
+		token, err := auth.Login(config)
 		if err != nil {
-			ui.PrintFatal("login failed", err)
+			u.PrintFatal("login failed", err)
 		}
 
 		_ = token
-		ui.PrintSuccess("authenticated successfully — token saved")
+		u.PrintSuccess("authenticated successfully — token saved")
 	},
 }
 

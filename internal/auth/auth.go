@@ -1,4 +1,4 @@
-package gdrive
+package auth
 
 import (
 	"context"
@@ -15,22 +15,23 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tanq16/gdrive/internal/ui"
+	u "github.com/tanq16/gdrive/utils"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
+	"google.golang.org/api/calendar/v3"
 	drive "google.golang.org/api/drive/v3"
-	"google.golang.org/api/option"
+	"google.golang.org/api/gmail/v1"
 )
 
 // ConfigDir returns the config directory path, creating it if needed
 func ConfigDir() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		ui.PrintFatal("cannot determine home directory", err)
+		u.PrintFatal("cannot determine home directory", err)
 	}
-	dir := filepath.Join(home, ".config", "gdrive")
+	dir := filepath.Join(home, ".config", "gcli")
 	if err := os.MkdirAll(dir, 0700); err != nil {
-		ui.PrintFatal("cannot create config directory", err)
+		u.PrintFatal("cannot create config directory", err)
 	}
 	return dir
 }
@@ -42,7 +43,11 @@ func LoadCredentials() (*oauth2.Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create %s with your OAuth client credentials", credPath)
 	}
-	config, err := google.ConfigFromJSON(data, drive.DriveScope)
+	config, err := google.ConfigFromJSON(data,
+		drive.DriveScope,
+		gmail.GmailModifyScope,
+		calendar.CalendarScope,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("invalid credentials file: %w", err)
 	}
@@ -63,7 +68,7 @@ func Login(config *oauth2.Config) (*oauth2.Token, error) {
 	}
 
 	// Fall back to paste-URL flow
-	ui.PrintWarn("localhost callback unavailable, using manual flow", nil)
+	u.PrintWarn("localhost callback unavailable, using manual flow", nil)
 	return loginWithPaste(config, state)
 }
 
@@ -105,9 +110,9 @@ func loginWithCallback(config *oauth2.Config, state string) (*oauth2.Token, erro
 		}
 	}()
 
-	ui.PrintInfo("Opening browser for authentication...")
+	u.PrintInfo("Opening browser for authentication...")
 	openBrowser(authURL)
-	ui.PrintGeneric(fmt.Sprintf("If the browser didn't open, visit:\n%s", authURL))
+	u.PrintGeneric(fmt.Sprintf("If the browser didn't open, visit:\n%s", authURL))
 
 	var code string
 	select {
@@ -138,11 +143,11 @@ func loginWithPaste(config *oauth2.Config, state string) (*oauth2.Token, error) 
 
 	authURL := config.AuthCodeURL(state, oauth2.AccessTypeOffline, oauth2.ApprovalForce)
 
-	ui.PrintInfo("Visit this URL to authenticate:")
-	ui.PrintGeneric(authURL)
-	ui.PrintGeneric("")
+	u.PrintInfo("Visit this URL to authenticate:")
+	u.PrintGeneric(authURL)
+	u.PrintGeneric("")
 
-	redirectURL, err := ui.PromptInput("Paste the full redirect URL:", "http://localhost?code=...")
+	redirectURL, err := u.PromptInput("Paste the full redirect URL:", "http://localhost?code=...")
 	if err != nil {
 		return nil, fmt.Errorf("input error: %w", err)
 	}
@@ -171,11 +176,11 @@ func LoadToken() (*oauth2.Token, error) {
 	tokenPath := filepath.Join(ConfigDir(), "token.json")
 	data, err := os.ReadFile(tokenPath)
 	if err != nil {
-		return nil, fmt.Errorf("run 'gdrive login' first")
+		return nil, fmt.Errorf("run 'gcli login' first")
 	}
 	var token oauth2.Token
 	if err := json.Unmarshal(data, &token); err != nil {
-		return nil, fmt.Errorf("corrupt token file — run 'gdrive login' again")
+		return nil, fmt.Errorf("corrupt token file — run 'gcli login' again")
 	}
 	return &token, nil
 }
@@ -198,16 +203,16 @@ func SaveToken(token *oauth2.Token) error {
 	return nil
 }
 
-// GetClient returns an authenticated HTTP client and Drive service
-func GetClient() (*http.Client, *drive.Service, error) {
+// GetHTTPClient returns an authenticated HTTP client
+func GetHTTPClient() (*http.Client, error) {
 	config, err := LoadCredentials()
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	token, err := LoadToken()
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	tokenSource := NewTokenSource(config, token)
@@ -215,21 +220,16 @@ func GetClient() (*http.Client, *drive.Service, error) {
 	// Check if token was refreshed and save the new one
 	newToken, err := tokenSource.Token()
 	if err != nil {
-		return nil, nil, fmt.Errorf("token refresh failed — run 'gdrive login' again")
+		return nil, fmt.Errorf("token refresh failed — run 'gcli login' again")
 	}
 	if newToken.AccessToken != token.AccessToken {
 		if err := SaveToken(newToken); err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 	}
 
 	client := oauth2.NewClient(context.Background(), tokenSource)
-	srv, err := drive.NewService(context.Background(), option.WithHTTPClient(client))
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create Drive service: %w", err)
-	}
-
-	return client, srv, nil
+	return client, nil
 }
 
 func generateState() (string, error) {

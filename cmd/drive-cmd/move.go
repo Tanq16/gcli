@@ -1,11 +1,11 @@
-package cmd
+package driveCmd
 
 import (
 	"path"
 
 	"github.com/spf13/cobra"
-	gdrive "github.com/tanq16/gdrive/internal"
-	"github.com/tanq16/gdrive/internal/ui"
+	"github.com/tanq16/gdrive/internal/drive"
+	u "github.com/tanq16/gdrive/utils"
 )
 
 var moveCmd = &cobra.Command{
@@ -13,9 +13,9 @@ var moveCmd = &cobra.Command{
 	Short: "Move or rename a file or folder",
 	Args:  cobra.ExactArgs(2),
 	Run: func(cmd *cobra.Command, args []string) {
-		src, err := gdrive.ResolvePath(args[0])
+		src, err := drive.ResolvePath(args[0])
 		if err != nil {
-			ui.PrintFatal("failed to resolve source", err)
+			u.PrintFatal("failed to resolve source", err)
 		}
 
 		currentParentID := ""
@@ -24,22 +24,22 @@ var moveCmd = &cobra.Command{
 		}
 
 		// Resolve destination parent and determine new name
-		dstParentID, dstName, err := gdrive.ResolveParent(args[1])
+		dstParentID, dstName, err := drive.ResolveParent(args[1])
 		if err != nil {
 			// If parent resolution fails, treat dst as just a rename in the same folder
 			dstName = path.Base(args[1])
 			dstParentID = currentParentID
 		}
 
-		moved, err := gdrive.MoveFile(src.Id, dstName, currentParentID, dstParentID)
+		moved, err := drive.MoveFile(src.Id, dstName, currentParentID, dstParentID)
 		if err != nil {
-			ui.PrintFatal("failed to move "+src.Name, err)
+			u.PrintFatal("failed to move "+src.Name, err)
 		}
 
-		ui.PrintSuccess("moved to " + moved.Name + " (" + moved.Id + ")")
+		u.PrintSuccess("moved to " + moved.Name + " (" + moved.Id + ")")
 	},
 }
 
 func init() {
-	rootCmd.AddCommand(moveCmd)
+	DriveCmd.AddCommand(moveCmd)
 }

@@ -1,11 +1,11 @@
-package cmd
+package driveCmd
 
 import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	gdrive "github.com/tanq16/gdrive/internal"
-	"github.com/tanq16/gdrive/internal/ui"
+	"github.com/tanq16/gdrive/internal/drive"
+	u "github.com/tanq16/gdrive/utils"
 )
 
 var searchFlags struct {
@@ -24,7 +24,7 @@ var searchCmd = &cobra.Command{
 	Short: "Search for files in Google Drive",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		opts := gdrive.SearchOptions{
+		opts := drive.SearchOptions{
 			Query:      args[0],
 			Type:       searchFlags.fileType,
 			Extensions: searchFlags.extensions,
@@ -36,13 +36,13 @@ var searchCmd = &cobra.Command{
 			Sort:       searchFlags.sort,
 		}
 
-		files, err := gdrive.Search(opts)
+		files, err := drive.Search(opts)
 		if err != nil {
-			ui.PrintFatal("search failed", err)
+			u.PrintFatal("search failed", err)
 		}
 
 		if len(files) == 0 {
-			ui.PrintInfo("no results found")
+			u.PrintInfo("no results found")
 			return
 		}
 
@@ -50,14 +50,14 @@ var searchCmd = &cobra.Command{
 		var rows [][]string
 		for _, f := range files {
 			fileType := "file"
-			if gdrive.IsFolder(f) {
+			if drive.IsFolder(f) {
 				fileType = "dir"
-			} else if gdrive.IsWorkspaceFile(f) {
+			} else if drive.IsWorkspaceFile(f) {
 				fileType = "gdoc"
 			}
 
-			size := ui.FormatSize(f.Size)
-			if gdrive.IsFolder(f) || gdrive.IsWorkspaceFile(f) {
+			size := u.FormatSize(f.Size)
+			if drive.IsFolder(f) || drive.IsWorkspaceFile(f) {
 				size = "-"
 			}
 
@@ -70,12 +70,12 @@ var searchCmd = &cobra.Command{
 			rows = append(rows, []string{fileType, f.Name, size, modified, f.Id})
 		}
 
-		ui.PrintTable(headers, rows)
+		u.PrintTable(headers, rows)
 	},
 }
 
 func init() {
-	rootCmd.AddCommand(searchCmd)
+	DriveCmd.AddCommand(searchCmd)
 	searchCmd.Flags().StringVar(&searchFlags.fileType, "type", "", "Filter by type (file, folder)")
 	searchCmd.Flags().StringSliceVar(&searchFlags.extensions, "extensions", nil, "Filter by file extensions")
 	searchCmd.Flags().StringVar(&searchFlags.createdIn, "created-in", "", "Filter by creation time range (YYYY-MM-DD..YYYY-MM-DD)")

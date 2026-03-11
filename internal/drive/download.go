@@ -1,4 +1,4 @@
-package gdrive
+package drive
 
 import (
 	"fmt"
@@ -7,12 +7,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/tanq16/gdrive/internal/ui"
-	drive "google.golang.org/api/drive/v3"
+	u "github.com/tanq16/gdrive/utils"
+	driveapi "google.golang.org/api/drive/v3"
 )
 
 // DownloadFile downloads a single file from Drive to a local path
-func DownloadFile(file *drive.File, localPath string) error {
+func DownloadFile(file *driveapi.File, localPath string) error {
 	if IsWorkspaceFile(file) {
 		return ExportFile(file, localPath)
 	}
@@ -34,12 +34,12 @@ func DownloadFile(file *drive.File, localPath string) error {
 		return fmt.Errorf("download failed: %w", err)
 	}
 
-	ui.PrintInfo(fmt.Sprintf("downloaded %s (%s)", file.Name, ui.FormatSize(written)))
+	u.PrintInfo(fmt.Sprintf("downloaded %s (%s)", file.Name, u.FormatSize(written)))
 	return nil
 }
 
 // ExportFile exports a Google Workspace file to the appropriate format
-func ExportFile(file *drive.File, localPath string) error {
+func ExportFile(file *driveapi.File, localPath string) error {
 	exportMIME := ExportMIME(file.MimeType)
 	ext := ExportExtension(file.MimeType)
 
@@ -65,7 +65,7 @@ func ExportFile(file *drive.File, localPath string) error {
 		return fmt.Errorf("export failed: %w", err)
 	}
 
-	ui.PrintInfo(fmt.Sprintf("exported %s (%s)", filepath.Base(localPath), ui.FormatSize(written)))
+	u.PrintInfo(fmt.Sprintf("exported %s (%s)", filepath.Base(localPath), u.FormatSize(written)))
 	return nil
 }
 
@@ -85,7 +85,7 @@ func DownloadFolder(folderID string, localPath string) error {
 
 		if IsFolder(f) {
 			if err := DownloadFolder(f.Id, itemPath); err != nil {
-				ui.PrintError("failed to download folder "+f.Name, err)
+				u.PrintError("failed to download folder "+f.Name, err)
 			}
 			continue
 		}
@@ -95,7 +95,7 @@ func DownloadFolder(folderID string, localPath string) error {
 		}
 
 		if err := DownloadFile(f, itemPath); err != nil {
-			ui.PrintError("failed to download "+f.Name, err)
+			u.PrintError("failed to download "+f.Name, err)
 		}
 	}
 

@@ -3,7 +3,7 @@
 # =============================================================================
 # Variables
 # =============================================================================
-APP_NAME := gdrive
+APP_NAME := gcli
 
 # Build variables (set by CI or use defaults)
 VERSION ?= dev-build

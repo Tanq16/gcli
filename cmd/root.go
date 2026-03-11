@@ -8,16 +8,19 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
-	gdrive "github.com/tanq16/gdrive/internal"
-	"github.com/tanq16/gdrive/internal/ui"
+	calCmd "github.com/tanq16/gdrive/cmd/cal-cmd"
+	driveCmd "github.com/tanq16/gdrive/cmd/drive-cmd"
+	mailCmd "github.com/tanq16/gdrive/cmd/mail-cmd"
+	u "github.com/tanq16/gdrive/utils"
 )
 
 var AppVersion = "dev-build"
 var debugFlag bool
+var forAIFlag bool
 
 var rootCmd = &cobra.Command{
-	Use:     "gdrive",
-	Short:   "CLI tool for Google Drive file operations",
+	Use:     "gcli",
+	Short:   "CLI tool for Google Drive, Gmail, and Calendar",
 	Version: AppVersion,
 	CompletionOptions: cobra.CompletionOptions{
 		HiddenDefaultCmd: true,
@@ -42,21 +45,22 @@ func setupLogs() {
 	zerolog.SetGlobalLevel(zerolog.InfoLevel)
 	if debugFlag {
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+		u.GlobalDebugFlag = true
 	}
-	ui.Init(debugFlag)
+	if forAIFlag {
+		zerolog.SetGlobalLevel(zerolog.Disabled)
+		u.GlobalForAIFlag = true
+	}
 }
 
 func init() {
 	rootCmd.SetHelpCommand(&cobra.Command{Hidden: true})
-	rootCmd.PersistentFlags().BoolVarP(&debugFlag, "debug", "d", false, "Enable debug logging")
+	rootCmd.PersistentFlags().BoolVar(&debugFlag, "debug", false, "Enable debug logging")
+	rootCmd.PersistentFlags().BoolVar(&forAIFlag, "for-ai", false, "AI-friendly output (plain text, piped input)")
+	rootCmd.MarkFlagsMutuallyExclusive("debug", "for-ai")
 	cobra.OnInitialize(setupLogs)
 
-	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
-		_, srv, err := gdrive.GetClient()
-		if err != nil {
-			return err
-		}
-		gdrive.Init(srv, debugFlag)
-		return nil
-	}
+	rootCmd.AddCommand(driveCmd.DriveCmd)
+	rootCmd.AddCommand(mailCmd.MailCmd)
+	rootCmd.AddCommand(calCmd.CalCmd)
 }

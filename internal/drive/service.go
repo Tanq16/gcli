@@ -1,23 +1,31 @@
-package gdrive
+package drive
 
 import (
+	"context"
 	"fmt"
+	"net/http"
 	"strings"
 
-	drive "google.golang.org/api/drive/v3"
+	driveapi "google.golang.org/api/drive/v3"
 	"google.golang.org/api/googleapi"
+	"google.golang.org/api/option"
 )
 
-// Service is the authenticated Drive service, set during PersistentPreRun
-var Service *drive.Service
+// Service is the authenticated Drive service, set during PersistentPreRunE
+var Service *driveapi.Service
 
 // Debug indicates whether debug logging is enabled
 var Debug bool
 
-// Init stores the Drive service and debug flag in package-level vars
-func Init(srv *drive.Service, debug bool) {
+// Init creates a Drive service from an authenticated HTTP client and stores it
+func Init(client *http.Client, debug bool) error {
+	srv, err := driveapi.NewService(context.Background(), option.WithHTTPClient(client))
+	if err != nil {
+		return fmt.Errorf("failed to create Drive service: %w", err)
+	}
 	Service = srv
 	Debug = debug
+	return nil
 }
 
 // FileFields returns the standard field set for single-file requests
@@ -31,12 +39,12 @@ func ListFields() googleapi.Field {
 }
 
 // IsFolder returns true if the file is a Google Drive folder
-func IsFolder(f *drive.File) bool {
+func IsFolder(f *driveapi.File) bool {
 	return f.MimeType == "application/vnd.google-apps.folder"
 }
 
 // IsWorkspaceFile returns true if the file is a Google Workspace native file (not a folder)
-func IsWorkspaceFile(f *drive.File) bool {
+func IsWorkspaceFile(f *driveapi.File) bool {
 	return strings.HasPrefix(f.MimeType, "application/vnd.google-apps.") && !IsFolder(f)
 }
 

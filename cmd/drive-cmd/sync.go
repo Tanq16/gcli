@@ -1,4 +1,4 @@
-package cmd
+package driveCmd
 
 import (
 	"context"
@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	gdrive "github.com/tanq16/gdrive/internal"
-	"github.com/tanq16/gdrive/internal/ui"
+	"github.com/tanq16/gdrive/internal/drive"
+	u "github.com/tanq16/gdrive/utils"
 )
 
 var syncPushFlags struct {
@@ -36,42 +36,42 @@ var syncPushCmd = &cobra.Command{
 
 		ignoreList := parseIgnore(syncPushFlags.ignore)
 
-		folder, err := gdrive.ResolvePath(remotePath)
+		folder, err := drive.ResolvePath(remotePath)
 		if err != nil {
-			ui.PrintFatal("failed to resolve remote path", err)
+			u.PrintFatal("failed to resolve remote path", err)
 		}
-		if !gdrive.IsFolder(folder) {
-			ui.PrintFatal("remote path must be a folder", nil)
+		if !drive.IsFolder(folder) {
+			u.PrintFatal("remote path must be a folder", nil)
 		}
 
-		ui.PrintInfo("building local tree...")
-		localTree, err := gdrive.BuildLocalTree(ctx, localPath, ignoreList)
+		u.PrintInfo("building local tree...")
+		localTree, err := drive.BuildLocalTree(ctx, localPath, ignoreList)
 		if err != nil {
-			ui.PrintFatal("failed to build local tree", err)
+			u.PrintFatal("failed to build local tree", err)
 		}
 
-		ui.PrintInfo("building remote tree...")
-		remoteTree, err := gdrive.BuildRemoteTree(ctx, folder.Id, "", ignoreList)
+		u.PrintInfo("building remote tree...")
+		remoteTree, err := drive.BuildRemoteTree(ctx, folder.Id, "", ignoreList)
 		if err != nil {
-			ui.PrintFatal("failed to build remote tree", err)
+			u.PrintFatal("failed to build remote tree", err)
 		}
 
-		plan := gdrive.CompareTrees(localTree, remoteTree)
+		plan := drive.CompareTrees(localTree, remoteTree)
 
 		total := len(plan.Creates) + len(plan.Updates) + len(plan.Deletes)
 		if total == 0 {
-			ui.PrintSuccess("already in sync")
+			u.PrintSuccess("already in sync")
 			return
 		}
 
-		ui.PrintInfo(fmt.Sprintf("sync plan: %d creates, %d updates, %d deletes",
+		u.PrintInfo(fmt.Sprintf("sync plan: %d creates, %d updates, %d deletes",
 			len(plan.Creates), len(plan.Updates), len(plan.Deletes)))
 
-		if err := gdrive.ExecutePush(ctx, plan, localPath, folder.Id, syncPushFlags.concurrency); err != nil {
-			ui.PrintFatal("sync push failed", err)
+		if err := drive.ExecutePush(ctx, plan, localPath, folder.Id, syncPushFlags.concurrency); err != nil {
+			u.PrintFatal("sync push failed", err)
 		}
 
-		ui.PrintSuccess("sync push complete")
+		u.PrintSuccess("sync push complete")
 	},
 }
 
@@ -86,50 +86,50 @@ var syncPullCmd = &cobra.Command{
 
 		ignoreList := parseIgnore(syncPullFlags.ignore)
 
-		folder, err := gdrive.ResolvePath(remotePath)
+		folder, err := drive.ResolvePath(remotePath)
 		if err != nil {
-			ui.PrintFatal("failed to resolve remote path", err)
+			u.PrintFatal("failed to resolve remote path", err)
 		}
-		if !gdrive.IsFolder(folder) {
-			ui.PrintFatal("remote path must be a folder", nil)
-		}
-
-		ui.PrintInfo("building remote tree...")
-		remoteTree, err := gdrive.BuildRemoteTree(ctx, folder.Id, "", ignoreList)
-		if err != nil {
-			ui.PrintFatal("failed to build remote tree", err)
+		if !drive.IsFolder(folder) {
+			u.PrintFatal("remote path must be a folder", nil)
 		}
 
-		ui.PrintInfo("building local tree...")
-		localTree, err := gdrive.BuildLocalTree(context.Background(), localPath, ignoreList)
+		u.PrintInfo("building remote tree...")
+		remoteTree, err := drive.BuildRemoteTree(ctx, folder.Id, "", ignoreList)
 		if err != nil {
-			localTree = &gdrive.FileTree{
-				Files: make(map[string]gdrive.FileInfo),
-				Dirs:  make(map[string]*gdrive.FileTree),
+			u.PrintFatal("failed to build remote tree", err)
+		}
+
+		u.PrintInfo("building local tree...")
+		localTree, err := drive.BuildLocalTree(context.Background(), localPath, ignoreList)
+		if err != nil {
+			localTree = &drive.FileTree{
+				Files: make(map[string]drive.FileInfo),
+				Dirs:  make(map[string]*drive.FileTree),
 			}
 		}
 
-		plan := gdrive.CompareTrees(remoteTree, localTree)
+		plan := drive.CompareTrees(remoteTree, localTree)
 
 		total := len(plan.Creates) + len(plan.Updates) + len(plan.Deletes)
 		if total == 0 {
-			ui.PrintSuccess("already in sync")
+			u.PrintSuccess("already in sync")
 			return
 		}
 
-		ui.PrintInfo(fmt.Sprintf("sync plan: %d creates, %d updates, %d deletes",
+		u.PrintInfo(fmt.Sprintf("sync plan: %d creates, %d updates, %d deletes",
 			len(plan.Creates), len(plan.Updates), len(plan.Deletes)))
 
-		if err := gdrive.ExecutePull(ctx, plan, folder.Id, localPath, syncPullFlags.concurrency); err != nil {
-			ui.PrintFatal("sync pull failed", err)
+		if err := drive.ExecutePull(ctx, plan, folder.Id, localPath, syncPullFlags.concurrency); err != nil {
+			u.PrintFatal("sync pull failed", err)
 		}
 
-		ui.PrintSuccess("sync pull complete")
+		u.PrintSuccess("sync pull complete")
 	},
 }
 
 func init() {
-	rootCmd.AddCommand(syncCmd)
+	DriveCmd.AddCommand(syncCmd)
 	syncCmd.AddCommand(syncPushCmd)
 	syncCmd.AddCommand(syncPullCmd)
 

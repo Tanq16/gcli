@@ -1,11 +1,11 @@
-package gdrive
+package drive
 
 import (
-	drive "google.golang.org/api/drive/v3"
+	driveapi "google.golang.org/api/drive/v3"
 )
 
 // GetFile retrieves a file's metadata by ID
-func GetFile(fileID string) (*drive.File, error) {
+func GetFile(fileID string) (*driveapi.File, error) {
 	f, err := Service.Files.Get(fileID).
 		Fields(FileFields()).
 		SupportsAllDrives(true).
@@ -28,8 +28,8 @@ func DeleteFile(fileID string) error {
 }
 
 // CopyFile copies a file to a new location with an optional new name
-func CopyFile(fileID string, name string, parentID string) (*drive.File, error) {
-	meta := &drive.File{
+func CopyFile(fileID string, name string, parentID string) (*driveapi.File, error) {
+	meta := &driveapi.File{
 		Name:    name,
 		Parents: []string{parentID},
 	}
@@ -44,8 +44,8 @@ func CopyFile(fileID string, name string, parentID string) (*drive.File, error) 
 }
 
 // MoveFile moves a file to a new parent and/or renames it
-func MoveFile(fileID string, newName string, currentParentID string, newParentID string) (*drive.File, error) {
-	meta := &drive.File{}
+func MoveFile(fileID string, newName string, currentParentID string, newParentID string) (*driveapi.File, error) {
+	meta := &driveapi.File{}
 	if newName != "" {
 		meta.Name = newName
 	}

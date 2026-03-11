@@ -1,4 +1,4 @@
-package gdrive
+package drive
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/tanq16/gdrive/internal/ui"
+	u "github.com/tanq16/gdrive/utils"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -212,11 +212,10 @@ func ExecutePush(ctx context.Context, plan *SyncPlan, localRoot string, remoteFo
 	}
 
 	if len(plan.Creates) > 0 {
-		ui.PrintInfo(fmt.Sprintf("uploading %d new files...", len(plan.Creates)))
+		u.PrintInfo(fmt.Sprintf("uploading %d new files...", len(plan.Creates)))
 		g, ctx := errgroup.WithContext(ctx)
 		g.SetLimit(concurrency)
 		for _, action := range plan.Creates {
-			action := action
 			g.Go(func() error {
 				select {
 				case <-ctx.Done():
@@ -241,11 +240,10 @@ func ExecutePush(ctx context.Context, plan *SyncPlan, localRoot string, remoteFo
 	}
 
 	if len(plan.Updates) > 0 {
-		ui.PrintInfo(fmt.Sprintf("updating %d changed files...", len(plan.Updates)))
+		u.PrintInfo(fmt.Sprintf("updating %d changed files...", len(plan.Updates)))
 		g, ctx := errgroup.WithContext(ctx)
 		g.SetLimit(concurrency)
 		for _, action := range plan.Updates {
-			action := action
 			g.Go(func() error {
 				select {
 				case <-ctx.Done():
@@ -263,11 +261,10 @@ func ExecutePush(ctx context.Context, plan *SyncPlan, localRoot string, remoteFo
 	}
 
 	if len(plan.Deletes) > 0 {
-		ui.PrintInfo(fmt.Sprintf("deleting %d remote files...", len(plan.Deletes)))
+		u.PrintInfo(fmt.Sprintf("deleting %d remote files...", len(plan.Deletes)))
 		g, ctx := errgroup.WithContext(ctx)
 		g.SetLimit(concurrency)
 		for _, action := range plan.Deletes {
-			action := action
 			g.Go(func() error {
 				select {
 				case <-ctx.Done():
@@ -300,11 +297,10 @@ func ExecutePull(ctx context.Context, plan *SyncPlan, remoteFolderID string, loc
 	}
 
 	if len(plan.Creates) > 0 {
-		ui.PrintInfo(fmt.Sprintf("downloading %d new files...", len(plan.Creates)))
+		u.PrintInfo(fmt.Sprintf("downloading %d new files...", len(plan.Creates)))
 		g, ctx := errgroup.WithContext(ctx)
 		g.SetLimit(concurrency)
 		for _, action := range plan.Creates {
-			action := action
 			g.Go(func() error {
 				select {
 				case <-ctx.Done():
@@ -325,11 +321,10 @@ func ExecutePull(ctx context.Context, plan *SyncPlan, remoteFolderID string, loc
 	}
 
 	if len(plan.Updates) > 0 {
-		ui.PrintInfo(fmt.Sprintf("updating %d changed files...", len(plan.Updates)))
+		u.PrintInfo(fmt.Sprintf("updating %d changed files...", len(plan.Updates)))
 		g, ctx := errgroup.WithContext(ctx)
 		g.SetLimit(concurrency)
 		for _, action := range plan.Updates {
-			action := action
 			g.Go(func() error {
 				select {
 				case <-ctx.Done():
@@ -350,7 +345,7 @@ func ExecutePull(ctx context.Context, plan *SyncPlan, remoteFolderID string, loc
 	}
 
 	if len(plan.Deletes) > 0 {
-		ui.PrintInfo(fmt.Sprintf("deleting %d local files...", len(plan.Deletes)))
+		u.PrintInfo(fmt.Sprintf("deleting %d local files...", len(plan.Deletes)))
 		for _, action := range plan.Deletes {
 			localPath := filepath.Join(localRoot, action.RelPath)
 			os.Remove(localPath)

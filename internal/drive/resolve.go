@@ -1,11 +1,11 @@
-package gdrive
+package drive
 
 import (
 	"fmt"
 	"strings"
 	"sync"
 
-	drive "google.golang.org/api/drive/v3"
+	driveapi "google.golang.org/api/drive/v3"
 )
 
 // PathCache provides an in-memory cache for path-to-ID resolution
@@ -32,7 +32,7 @@ func (c *PathCache) set(path string, id string) {
 }
 
 // ResolvePath walks a Drive path segment-by-segment and returns the final file
-func ResolvePath(path string) (*drive.File, error) {
+func ResolvePath(path string) (*driveapi.File, error) {
 	path = strings.Trim(path, "/")
 	if path == "" {
 		return Service.Files.Get("root").Fields(FileFields()).SupportsAllDrives(true).Do()
@@ -108,7 +108,7 @@ func ResolvePath(path string) (*drive.File, error) {
 }
 
 // ResolveOrID resolves a file by path or directly by ID
-func ResolveOrID(path string, id string) (*drive.File, error) {
+func ResolveOrID(path string, id string) (*driveapi.File, error) {
 	if id != "" {
 		f, err := Service.Files.Get(id).Fields(FileFields()).SupportsAllDrives(true).Do()
 		if err != nil {

@@ -1,10 +1,10 @@
-package cmd
+package driveCmd
 
 import (
 	"github.com/spf13/cobra"
-	gdrive "github.com/tanq16/gdrive/internal"
-	"github.com/tanq16/gdrive/internal/ui"
-	drive "google.golang.org/api/drive/v3"
+	"github.com/tanq16/gdrive/internal/drive"
+	u "github.com/tanq16/gdrive/utils"
+	driveapi "google.golang.org/api/drive/v3"
 )
 
 var permFlags struct {
@@ -24,21 +24,21 @@ var permListCmd = &cobra.Command{
 	Short: "List permissions for a file or folder",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		f, err := gdrive.ResolveOrID(args[0], permFlags.id)
+		f, err := drive.ResolveOrID(args[0], permFlags.id)
 		if err != nil {
-			ui.PrintFatal("failed to resolve path", err)
+			u.PrintFatal("failed to resolve path", err)
 		}
 
-		perms, err := gdrive.Service.Files.Get(f.Id).
+		perms, err := drive.Service.Files.Get(f.Id).
 			Fields("permissions(id, type, role, emailAddress)").
 			SupportsAllDrives(true).
 			Do()
 		if err != nil {
-			ui.PrintFatal("failed to get permissions", gdrive.HandleError(err))
+			u.PrintFatal("failed to get permissions", drive.HandleError(err))
 		}
 
 		if len(perms.Permissions) == 0 {
-			ui.PrintInfo("no permissions found")
+			u.PrintInfo("no permissions found")
 			return
 		}
 
@@ -52,7 +52,7 @@ var permListCmd = &cobra.Command{
 			rows = append(rows, []string{p.Id, p.Type, p.Role, email})
 		}
 
-		ui.PrintTable(headers, rows)
+		u.PrintTable(headers, rows)
 	},
 }
 
@@ -62,15 +62,15 @@ var permCreateCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		if permFlags.permType == "" || permFlags.role == "" {
-			ui.PrintFatal("--type and --role are required", nil)
+			u.PrintFatal("--type and --role are required", nil)
 		}
 
-		f, err := gdrive.ResolveOrID(args[0], permFlags.id)
+		f, err := drive.ResolveOrID(args[0], permFlags.id)
 		if err != nil {
-			ui.PrintFatal("failed to resolve path", err)
+			u.PrintFatal("failed to resolve path", err)
 		}
 
-		perm := &drive.Permission{
+		perm := &driveapi.Permission{
 			Type: permFlags.permType,
 			Role: permFlags.role,
 		}
@@ -78,14 +78,14 @@ var permCreateCmd = &cobra.Command{
 			perm.EmailAddress = permFlags.email
 		}
 
-		created, err := gdrive.Service.Permissions.Create(f.Id, perm).
+		created, err := drive.Service.Permissions.Create(f.Id, perm).
 			SupportsAllDrives(true).
 			Do()
 		if err != nil {
-			ui.PrintFatal("failed to create permission", gdrive.HandleError(err))
+			u.PrintFatal("failed to create permission", drive.HandleError(err))
 		}
 
-		ui.PrintSuccess("created permission " + created.Id + " (" + created.Role + ")")
+		u.PrintSuccess("created permission " + created.Id + " (" + created.Role + ")")
 	},
 }
 
@@ -94,25 +94,25 @@ var permDeleteCmd = &cobra.Command{
 	Short: "Delete a permission from a file or folder",
 	Args:  cobra.ExactArgs(2),
 	Run: func(cmd *cobra.Command, args []string) {
-		f, err := gdrive.ResolveOrID(args[0], permFlags.id)
+		f, err := drive.ResolveOrID(args[0], permFlags.id)
 		if err != nil {
-			ui.PrintFatal("failed to resolve path", err)
+			u.PrintFatal("failed to resolve path", err)
 		}
 
 		permID := args[1]
-		err = gdrive.Service.Permissions.Delete(f.Id, permID).
+		err = drive.Service.Permissions.Delete(f.Id, permID).
 			SupportsAllDrives(true).
 			Do()
 		if err != nil {
-			ui.PrintFatal("failed to delete permission", gdrive.HandleError(err))
+			u.PrintFatal("failed to delete permission", drive.HandleError(err))
 		}
 
-		ui.PrintSuccess("deleted permission " + permID)
+		u.PrintSuccess("deleted permission " + permID)
 	},
 }
 
 func init() {
-	rootCmd.AddCommand(permissionsCmd)
+	DriveCmd.AddCommand(permissionsCmd)
 	permissionsCmd.AddCommand(permListCmd)
 	permissionsCmd.AddCommand(permCreateCmd)
 	permissionsCmd.AddCommand(permDeleteCmd)

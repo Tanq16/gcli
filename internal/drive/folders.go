@@ -1,4 +1,4 @@
-package gdrive
+package drive
 
 import (
 	"context"
@@ -6,21 +6,21 @@ import (
 	"sort"
 	"strings"
 
-	drive "google.golang.org/api/drive/v3"
+	driveapi "google.golang.org/api/drive/v3"
 )
 
 // ListFolder returns all non-trashed children of a folder, sorted folders-first then alphabetical
-func ListFolder(folderID string) ([]*drive.File, error) {
+func ListFolder(folderID string) ([]*driveapi.File, error) {
 	q := fmt.Sprintf("'%s' in parents and trashed = false", folderID)
 
-	var allFiles []*drive.File
+	var allFiles []*driveapi.File
 	err := Service.Files.List().
 		Q(q).
 		PageSize(1000).
 		Fields(ListFields()).
 		SupportsAllDrives(true).
 		IncludeItemsFromAllDrives(true).
-		Pages(context.Background(), func(page *drive.FileList) error {
+		Pages(context.Background(), func(page *driveapi.FileList) error {
 			allFiles = append(allFiles, page.Files...)
 			return nil
 		})
@@ -41,8 +41,8 @@ func ListFolder(folderID string) ([]*drive.File, error) {
 }
 
 // CreateFolder creates a single folder with the given name under parentID
-func CreateFolder(name string, parentID string) (*drive.File, error) {
-	f := &drive.File{
+func CreateFolder(name string, parentID string) (*driveapi.File, error) {
+	f := &driveapi.File{
 		Name:     name,
 		Parents:  []string{parentID},
 		MimeType: "application/vnd.google-apps.folder",
@@ -58,12 +58,12 @@ func CreateFolder(name string, parentID string) (*drive.File, error) {
 }
 
 // MkdirP creates all folders along a path, similar to mkdir -p
-func MkdirP(path string) (*drive.File, error) {
+func MkdirP(path string) (*driveapi.File, error) {
 	path = strings.Trim(path, "/")
 	parts := strings.Split(path, "/")
 
 	parentID := "root"
-	var lastFile *drive.File
+	var lastFile *driveapi.File
 
 	for _, part := range parts {
 		id, err := FindOrCreateFolder(part, parentID)
@@ -71,7 +71,7 @@ func MkdirP(path string) (*drive.File, error) {
 			return nil, err
 		}
 		parentID = id
-		lastFile = &drive.File{Id: id, Name: part, MimeType: "application/vnd.google-apps.folder"}
+		lastFile = &driveapi.File{Id: id, Name: part, MimeType: "application/vnd.google-apps.folder"}
 	}
 
 	// Fetch the full file metadata for the final folder

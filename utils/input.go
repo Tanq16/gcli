@@ -1,0 +1,199 @@
+package utils
+
+import (
+	"bufio"
+	"os"
+	"strings"
+
+	"github.com/charmbracelet/bubbles/textarea"
+	"github.com/charmbracelet/bubbles/textinput"
+	tea "github.com/charmbracelet/bubbletea"
+)
+
+// stdinScanner is shared across calls so sequential PromptInput/PromptPassword
+// calls each read the next line instead of draining all of stdin on the first call
+var stdinScanner *bufio.Scanner
+
+func getStdinScanner() *bufio.Scanner {
+	if stdinScanner == nil {
+		stdinScanner = bufio.NewScanner(os.Stdin)
+	}
+	return stdinScanner
+}
+
+// ReadPipedInput reads all remaining input from stdin pipe (bulk read)
+// Returns empty string if stdin is not a pipe
+func ReadPipedInput() string {
+	fi, err := os.Stdin.Stat()
+	if err != nil || fi.Mode()&os.ModeCharDevice != 0 {
+		return ""
+	}
+	scanner := getStdinScanner()
+	var lines []string
+	for scanner.Scan() {
+		lines = append(lines, scanner.Text())
+	}
+	return strings.TrimSpace(strings.Join(lines, "\n"))
+}
+
+// ReadPipedLine reads a single line from stdin pipe (for sequential prompts)
+// Returns empty string if stdin is not a pipe or no more lines
+func ReadPipedLine() string {
+	fi, err := os.Stdin.Stat()
+	if err != nil || fi.Mode()&os.ModeCharDevice != 0 {
+		return ""
+	}
+	scanner := getStdinScanner()
+	if scanner.Scan() {
+		return strings.TrimSpace(scanner.Text())
+	}
+	return ""
+}
+
+type inputModel struct {
+	textInput textinput.Model
+	done      bool
+	value     string
+}
+
+func (m inputModel) Init() tea.Cmd {
+	return textinput.Blink
+}
+
+func (m inputModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.Type {
+		case tea.KeyEnter:
+			m.value = m.textInput.Value()
+			m.done = true
+			return m, tea.Quit
+		case tea.KeyCtrlC, tea.KeyEsc:
+			m.done = true
+			return m, tea.Quit
+		}
+	}
+
+	m.textInput, cmd = m.textInput.Update(msg)
+	return m, cmd
+}
+
+func (m inputModel) View() string {
+	if m.done {
+		return ""
+	}
+	return m.textInput.View()
+}
+
+// PromptInput displays an inline prompt and returns user input
+// In AI mode, reads a single line from stdin pipe instead of launching TUI
+func PromptInput(prompt string, placeholder string) (string, error) {
+	if GlobalForAIFlag {
+		return ReadPipedLine(), nil
+	}
+
+	ti := textinput.New()
+	ti.Placeholder = placeholder
+	ti.Prompt = prompt + " "
+	ti.Focus()
+
+	m := inputModel{textInput: ti}
+	p := tea.NewProgram(m)
+
+	finalModel, err := p.Run()
+	if err != nil {
+		return "", err
+	}
+
+	result := finalModel.(inputModel)
+	return strings.TrimSpace(result.value), nil
+}
+
+// PromptPassword displays an inline password prompt (masked input)
+// In AI mode, reads a single line from stdin pipe instead of launching TUI
+func PromptPassword(prompt string) (string, error) {
+	if GlobalForAIFlag {
+		return ReadPipedLine(), nil
+	}
+
+	ti := textinput.New()
+	ti.Placeholder = "••••••••"
+	ti.Prompt = prompt + " "
+	ti.EchoMode = textinput.EchoPassword
+	ti.Focus()
+
+	m := inputModel{textInput: ti}
+	p := tea.NewProgram(m)
+
+	finalModel, err := p.Run()
+	if err != nil {
+		return "", err
+	}
+
+	result := finalModel.(inputModel)
+	return result.value, nil
+}
+
+type textAreaModel struct {
+	textarea textarea.Model
+	done     bool
+	value    string
+}
+
+func (m textAreaModel) Init() tea.Cmd {
+	return textarea.Blink
+}
+
+func (m textAreaModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.Type {
+		case tea.KeyCtrlD:
+			m.value = m.textarea.Value()
+			m.done = true
+			return m, tea.Quit
+		case tea.KeyCtrlC, tea.KeyEsc:
+			m.done = true
+			return m, tea.Quit
+		}
+	}
+
+	m.textarea, cmd = m.textarea.Update(msg)
+	return m, cmd
+}
+
+func (m textAreaModel) View() string {
+	if m.done {
+		return ""
+	}
+	return m.textarea.View() + "\n(Ctrl+D to submit, Esc to cancel)"
+}
+
+// PromptTextArea displays a multi-line text area and returns user input
+// In AI mode, reads all remaining stdin pipe input instead of launching TUI
+func PromptTextArea(prompt string, placeholder string) (string, error) {
+	if GlobalForAIFlag {
+		return ReadPipedInput(), nil
+	}
+
+	PrintInfo(prompt)
+
+	ta := textarea.New()
+	ta.Placeholder = placeholder
+	ta.Focus()
+
+	m := textAreaModel{textarea: ta}
+	p := tea.NewProgram(m)
+
+	finalModel, err := p.Run()
+	if err != nil {
+		return "", err
+	}
+
+	result := finalModel.(textAreaModel)
+	return strings.TrimSpace(result.value), nil
+}

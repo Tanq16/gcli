@@ -1,12 +1,12 @@
-package cmd
+package driveCmd
 
 import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	gdrive "github.com/tanq16/gdrive/internal"
-	"github.com/tanq16/gdrive/internal/ui"
-	drive "google.golang.org/api/drive/v3"
+	"github.com/tanq16/gdrive/internal/drive"
+	u "github.com/tanq16/gdrive/utils"
+	driveapi "google.golang.org/api/drive/v3"
 )
 
 var listFlags struct {
@@ -24,29 +24,29 @@ var listCmd = &cobra.Command{
 			path = args[0]
 		}
 
-		folder, err := gdrive.ResolveOrID(path, listFlags.id)
+		folder, err := drive.ResolveOrID(path, listFlags.id)
 		if err != nil {
-			ui.PrintFatal("failed to resolve path", err)
+			u.PrintFatal("failed to resolve path", err)
 		}
 
-		if !gdrive.IsFolder(folder) {
-			ui.PrintFatal("not a folder: "+folder.Name, nil)
+		if !drive.IsFolder(folder) {
+			u.PrintFatal("not a folder: "+folder.Name, nil)
 		}
 
-		files, err := gdrive.ListFolder(folder.Id)
+		files, err := drive.ListFolder(folder.Id)
 		if err != nil {
-			ui.PrintFatal("failed to list folder", err)
+			u.PrintFatal("failed to list folder", err)
 		}
 
 		if len(files) == 0 {
-			ui.PrintInfo("folder is empty")
+			u.PrintInfo("folder is empty")
 			return
 		}
 
 		// Apply filter if set
 		if listFlags.filter != "" {
 			filter := strings.ToLower(listFlags.filter)
-			var filtered []*drive.File
+			var filtered []*driveapi.File
 			for _, f := range files {
 				if strings.Contains(strings.ToLower(f.Name), filter) {
 					filtered = append(filtered, f)
@@ -54,7 +54,7 @@ var listCmd = &cobra.Command{
 			}
 			files = filtered
 			if len(files) == 0 {
-				ui.PrintInfo("no items match filter")
+				u.PrintInfo("no items match filter")
 				return
 			}
 		}
@@ -63,14 +63,14 @@ var listCmd = &cobra.Command{
 		var rows [][]string
 		for _, f := range files {
 			fileType := "file"
-			if gdrive.IsFolder(f) {
+			if drive.IsFolder(f) {
 				fileType = "dir"
-			} else if gdrive.IsWorkspaceFile(f) {
+			} else if drive.IsWorkspaceFile(f) {
 				fileType = "gdoc"
 			}
 
-			size := ui.FormatSize(f.Size)
-			if gdrive.IsFolder(f) || gdrive.IsWorkspaceFile(f) {
+			size := u.FormatSize(f.Size)
+			if drive.IsFolder(f) || drive.IsWorkspaceFile(f) {
 				size = "-"
 			}
 
@@ -83,12 +83,12 @@ var listCmd = &cobra.Command{
 			rows = append(rows, []string{fileType, f.Name, size, modified, f.Id})
 		}
 
-		ui.PrintTable(headers, rows)
+		u.PrintTable(headers, rows)
 	},
 }
 
 func init() {
-	rootCmd.AddCommand(listCmd)
+	DriveCmd.AddCommand(listCmd)
 	listCmd.Flags().StringVar(&listFlags.id, "id", "", "Use folder ID instead of path")
 	listCmd.Flags().StringVarP(&listFlags.filter, "filter", "F", "", "Filter results by name")
 }

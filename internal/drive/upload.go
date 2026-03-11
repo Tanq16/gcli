@@ -1,4 +1,4 @@
-package gdrive
+package drive
 
 import (
 	"fmt"
@@ -6,20 +6,20 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/tanq16/gdrive/internal/ui"
-	drive "google.golang.org/api/drive/v3"
+	u "github.com/tanq16/gdrive/utils"
+	driveapi "google.golang.org/api/drive/v3"
 	"google.golang.org/api/googleapi"
 )
 
 // UploadFile uploads a single local file to a Drive parent folder
-func UploadFile(localPath string, parentID string) (*drive.File, error) {
+func UploadFile(localPath string, parentID string) (*driveapi.File, error) {
 	f, err := os.Open(localPath)
 	if err != nil {
 		return nil, fmt.Errorf("cannot open %s: %w", localPath, err)
 	}
 	defer f.Close()
 
-	meta := &drive.File{
+	meta := &driveapi.File{
 		Name:    filepath.Base(localPath),
 		Parents: []string{parentID},
 	}
@@ -28,7 +28,7 @@ func UploadFile(localPath string, parentID string) (*drive.File, error) {
 		Media(f, googleapi.ChunkSize(8*1024*1024)).
 		ProgressUpdater(func(current, total int64) {
 			if total > 0 {
-				ui.PrintInfo(fmt.Sprintf("uploading %s: %.1f%%", meta.Name, float64(current)/float64(total)*100))
+				u.PrintInfo(fmt.Sprintf("uploading %s: %.1f%%", meta.Name, float64(current)/float64(total)*100))
 			}
 		}).
 		Fields(FileFields()).
@@ -41,7 +41,7 @@ func UploadFile(localPath string, parentID string) (*drive.File, error) {
 }
 
 // UpdateFile updates an existing Drive file with new content
-func UpdateFile(fileID string, localPath string) (*drive.File, error) {
+func UpdateFile(fileID string, localPath string) (*driveapi.File, error) {
 	f, err := os.Open(localPath)
 	if err != nil {
 		return nil, fmt.Errorf("cannot open %s: %w", localPath, err)
@@ -52,7 +52,7 @@ func UpdateFile(fileID string, localPath string) (*drive.File, error) {
 		Media(f, googleapi.ChunkSize(8*1024*1024)).
 		ProgressUpdater(func(current, total int64) {
 			if total > 0 {
-				ui.PrintInfo(fmt.Sprintf("updating %s: %.1f%%", filepath.Base(localPath), float64(current)/float64(total)*100))
+				u.PrintInfo(fmt.Sprintf("updating %s: %.1f%%", filepath.Base(localPath), float64(current)/float64(total)*100))
 			}
 		}).
 		Fields(FileFields()).
@@ -107,7 +107,7 @@ func UploadFolder(localPath string, parentID string) error {
 		}
 
 		fileCount++
-		ui.PrintInfo(fmt.Sprintf("uploading %d/%d: %s", fileCount, totalFiles, d.Name()))
+		u.PrintInfo(fmt.Sprintf("uploading %d/%d: %s", fileCount, totalFiles, d.Name()))
 		_, err = UploadFile(path, pid)
 		return err
 	})

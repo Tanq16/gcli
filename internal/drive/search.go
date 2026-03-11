@@ -1,11 +1,11 @@
-package gdrive
+package drive
 
 import (
 	"context"
 	"fmt"
 	"strings"
 
-	drive "google.golang.org/api/drive/v3"
+	driveapi "google.golang.org/api/drive/v3"
 )
 
 // SearchOptions holds the parameters for a server-side search
@@ -22,7 +22,7 @@ type SearchOptions struct {
 }
 
 // Search executes a server-side search with the given options
-func Search(opts SearchOptions) ([]*drive.File, error) {
+func Search(opts SearchOptions) ([]*driveapi.File, error) {
 	var conditions []string
 
 	conditions = append(conditions, "trashed = false")
@@ -81,8 +81,8 @@ func Search(opts SearchOptions) ([]*drive.File, error) {
 		call = call.OrderBy(orderBy)
 	}
 
-	var allFiles []*drive.File
-	err := call.Pages(context.Background(), func(page *drive.FileList) error {
+	var allFiles []*driveapi.File
+	err := call.Pages(context.Background(), func(page *driveapi.FileList) error {
 		allFiles = append(allFiles, page.Files...)
 		if opts.Limit > 0 && len(allFiles) >= opts.Limit {
 			return fmt.Errorf("limit reached")
@@ -95,7 +95,7 @@ func Search(opts SearchOptions) ([]*drive.File, error) {
 
 	// Apply size filters client-side (Drive API doesn't support size queries)
 	if opts.SizeMin > 0 || opts.SizeMax > 0 {
-		var filtered []*drive.File
+		var filtered []*driveapi.File
 		for _, f := range allFiles {
 			if opts.SizeMin > 0 && f.Size < opts.SizeMin {
 				continue
