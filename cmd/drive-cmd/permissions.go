@@ -7,11 +7,18 @@ import (
 	driveapi "google.golang.org/api/drive/v3"
 )
 
-var permFlags struct {
-	id       string
+var permListFlags struct {
+	id string
+}
+
+var permCreateFlags struct {
 	permType string
 	role     string
 	email    string
+}
+
+var permDeleteFlags struct {
+	id string
 }
 
 var permissionsCmd = &cobra.Command{
@@ -24,7 +31,7 @@ var permListCmd = &cobra.Command{
 	Short: "List permissions for a file or folder",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		f, err := drive.ResolveOrID(args[0], permFlags.id)
+		f, err := drive.ResolveOrID(args[0], permListFlags.id)
 		if err != nil {
 			u.PrintFatal("failed to resolve path", err)
 		}
@@ -61,21 +68,21 @@ var permCreateCmd = &cobra.Command{
 	Short: "Create a permission on a file or folder",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		if permFlags.permType == "" || permFlags.role == "" {
+		if permCreateFlags.permType == "" || permCreateFlags.role == "" {
 			u.PrintFatal("--type and --role are required", nil)
 		}
 
-		f, err := drive.ResolveOrID(args[0], permFlags.id)
+		f, err := drive.ResolveOrID(args[0], "")
 		if err != nil {
 			u.PrintFatal("failed to resolve path", err)
 		}
 
 		perm := &driveapi.Permission{
-			Type: permFlags.permType,
-			Role: permFlags.role,
+			Type: permCreateFlags.permType,
+			Role: permCreateFlags.role,
 		}
-		if permFlags.email != "" {
-			perm.EmailAddress = permFlags.email
+		if permCreateFlags.email != "" {
+			perm.EmailAddress = permCreateFlags.email
 		}
 
 		created, err := drive.Service.Permissions.Create(f.Id, perm).
@@ -94,7 +101,7 @@ var permDeleteCmd = &cobra.Command{
 	Short: "Delete a permission from a file or folder",
 	Args:  cobra.ExactArgs(2),
 	Run: func(cmd *cobra.Command, args []string) {
-		f, err := drive.ResolveOrID(args[0], permFlags.id)
+		f, err := drive.ResolveOrID(args[0], permDeleteFlags.id)
 		if err != nil {
 			u.PrintFatal("failed to resolve path", err)
 		}
@@ -117,9 +124,9 @@ func init() {
 	permissionsCmd.AddCommand(permCreateCmd)
 	permissionsCmd.AddCommand(permDeleteCmd)
 
-	permListCmd.Flags().StringVar(&permFlags.id, "id", "", "Use file ID instead of path")
-	permCreateCmd.Flags().StringVar(&permFlags.permType, "type", "", "Permission type (user, group, domain, anyone)")
-	permCreateCmd.Flags().StringVar(&permFlags.role, "role", "", "Permission role (reader, writer, commenter)")
-	permCreateCmd.Flags().StringVar(&permFlags.email, "email", "", "Email address for the permission")
-	permDeleteCmd.Flags().StringVar(&permFlags.id, "id", "", "Use file ID instead of path")
+	permListCmd.Flags().StringVar(&permListFlags.id, "id", "", "Use file ID instead of path")
+	permCreateCmd.Flags().StringVar(&permCreateFlags.permType, "type", "", "Permission type (user, group, domain, anyone)")
+	permCreateCmd.Flags().StringVar(&permCreateFlags.role, "role", "", "Permission role (reader, writer, commenter)")
+	permCreateCmd.Flags().StringVar(&permCreateFlags.email, "email", "", "Email address for the permission")
+	permDeleteCmd.Flags().StringVar(&permDeleteFlags.id, "id", "", "Use file ID instead of path")
 }

@@ -2,13 +2,24 @@ package mailCmd
 
 import (
 	"github.com/spf13/cobra"
+	markCmd "github.com/tanq16/gdrive/cmd/mail-cmd/mark-cmd"
+	"github.com/tanq16/gdrive/internal/auth"
+	"github.com/tanq16/gdrive/internal/mail"
 )
 
-// MailCmd is the parent command for all Gmail operations
+func init() {
+	MailCmd.AddCommand(markCmd.MarkCmd)
+}
+
 var MailCmd = &cobra.Command{
 	Use:   "mail",
 	Short: "Gmail operations",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		return cmd.Help()
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		client, err := auth.GetHTTPClient()
+		if err != nil {
+			return err
+		}
+		debug, _ := cmd.Root().PersistentFlags().GetBool("debug")
+		return mail.Init(client, debug)
 	},
 }

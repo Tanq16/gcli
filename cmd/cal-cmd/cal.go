@@ -18,7 +18,4 @@ var CalCmd = &cobra.Command{
 		debug, _ := cmd.Root().PersistentFlags().GetBool("debug")
 		return cal.Init(client, debug)
 	},
-	RunE: func(cmd *cobra.Command, args []string) error {
-		return cmd.Help()
-	},
 }
