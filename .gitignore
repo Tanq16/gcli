@@ -1,4 +1,5 @@
 # Binaries
+gcli
 bin/
 *.exe
 *.dll
