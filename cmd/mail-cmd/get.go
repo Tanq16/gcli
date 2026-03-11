@@ -1,41 +1,33 @@
 package mailCmd
 
 import (
+	"fmt"
+
 	"github.com/spf13/cobra"
 	"github.com/tanq16/gdrive/internal/mail"
 	u "github.com/tanq16/gdrive/utils"
 )
 
 var getCmd = &cobra.Command{
-	Use:   "get <message-id>",
-	Short: "Show full message (headers + body)",
+	Use:   "get <thread-id>",
+	Short: "Show all messages in a thread",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		msg, err := mail.GetMessage(args[0])
+		thread, err := mail.GetThread(args[0])
 		if err != nil {
-			u.PrintFatal("failed to get message", err)
+			u.PrintFatal("failed to get thread", err)
 		}
 
-		from := mail.ExtractHeader(msg, "From")
-		to := mail.ExtractHeader(msg, "To")
-		cc := mail.ExtractHeader(msg, "Cc")
-		date := mail.ExtractHeader(msg, "Date")
-		subject := mail.ExtractHeader(msg, "Subject")
-
-		headers := []string{"FIELD", "VALUE"}
-		rows := [][]string{
-			{"From", from},
-			{"To", to},
-			{"Date", date},
-			{"Subject", subject},
+		msgs := thread.Messages
+		for i, msg := range msgs {
+			u.PrintGeneric(fmt.Sprintf("--- Message %d of %d ---", i+1, len(msgs)))
+			from := mail.ExtractHeader(msg, "From")
+			date := mail.ExtractHeader(msg, "Date")
+			u.PrintGeneric(fmt.Sprintf("From: %s  |  Date: %s", from, date))
+			u.PrintGeneric("")
+			u.PrintGeneric(mail.ExtractBody(msg))
+			u.PrintGeneric("")
 		}
-		if cc != "" {
-			rows = append(rows[:3], append([][]string{{"Cc", cc}}, rows[3:]...)...)
-		}
-
-		u.PrintTable(headers, rows)
-		u.PrintGeneric("")
-		u.PrintGeneric(mail.ExtractBody(msg))
 	},
 }
 

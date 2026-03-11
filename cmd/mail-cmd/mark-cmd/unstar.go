@@ -7,8 +7,8 @@ import (
 )
 
 var unstarCmd = &cobra.Command{
-	Use:   "unstar <message-id>",
-	Short: "Remove star from a message",
+	Use:   "unstar <thread-id>",
+	Short: "Remove star from a thread",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := mail.Unstar(args[0]); err != nil {

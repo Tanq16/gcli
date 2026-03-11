@@ -7,8 +7,8 @@ import (
 )
 
 var archiveCmd = &cobra.Command{
-	Use:   "archive <message-id>",
-	Short: "Archive a message (remove from inbox)",
+	Use:   "archive <thread-id>",
+	Short: "Archive a thread (remove from inbox)",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := mail.Archive(args[0]); err != nil {

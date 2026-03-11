@@ -7,8 +7,8 @@ import (
 )
 
 var trashCmd = &cobra.Command{
-	Use:   "trash <message-id>",
-	Short: "Move a message to trash",
+	Use:   "trash <thread-id>",
+	Short: "Move a thread to trash",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := mail.Trash(args[0]); err != nil {

@@ -24,10 +24,10 @@ func SendMessage(opts MessageOptions) error {
 	return HandleError(err)
 }
 
-func ReplyMessage(originalID string, body string, contentType string, replyAll bool, attachments []string) error {
-	original, err := GetMessage(originalID)
+func ReplyMessage(threadID string, body string, contentType string, replyAll bool, attachments []string) error {
+	original, err := GetLastMessageInThread(threadID)
 	if err != nil {
-		return fmt.Errorf("failed to fetch original message: %w", err)
+		return fmt.Errorf("failed to fetch thread: %w", err)
 	}
 
 	from := extractHeader(original, "From")
@@ -68,17 +68,17 @@ func ReplyMessage(originalID string, body string, contentType string, replyAll b
 		ContentType: contentType,
 		InReplyTo:   messageID,
 		References:  references,
-		ThreadId:    original.ThreadId,
+		ThreadId:    threadID,
 		Attachments: attachments,
 	}
 
 	return SendMessage(opts)
 }
 
-func ForwardMessage(originalID string, to []string, note string, contentType string) error {
-	original, err := GetMessage(originalID)
+func ForwardMessage(threadID string, to []string, note string, contentType string) error {
+	original, err := GetLastMessageInThread(threadID)
 	if err != nil {
-		return fmt.Errorf("failed to fetch original message: %w", err)
+		return fmt.Errorf("failed to fetch thread: %w", err)
 	}
 
 	from := extractHeader(original, "From")
@@ -91,23 +91,38 @@ func ForwardMessage(originalID string, to []string, note string, contentType str
 		subject = "Fwd: " + subject
 	}
 
-	var body strings.Builder
+	var bodyBuf strings.Builder
 	if note != "" {
-		body.WriteString(note)
-		body.WriteString("\n\n")
+		bodyBuf.WriteString(note)
+		if contentType == "text/html" {
+			bodyBuf.WriteString("<br><br>")
+		} else {
+			bodyBuf.WriteString("\n\n")
+		}
 	}
-	body.WriteString("---------- Forwarded message ----------\n")
-	body.WriteString(fmt.Sprintf("From: %s\n", from))
-	body.WriteString(fmt.Sprintf("Date: %s\n", date))
-	body.WriteString(fmt.Sprintf("Subject: %s\n", extractHeader(original, "Subject")))
-	body.WriteString(fmt.Sprintf("To: %s\n", origTo))
-	body.WriteString("\n")
-	body.WriteString(origBody)
+
+	if contentType == "text/html" {
+		bodyBuf.WriteString("<div style=\"color:#555\">---------- Forwarded message ----------<br>")
+		bodyBuf.WriteString(fmt.Sprintf("From: %s<br>", from))
+		bodyBuf.WriteString(fmt.Sprintf("Date: %s<br>", date))
+		bodyBuf.WriteString(fmt.Sprintf("Subject: %s<br>", subject))
+		bodyBuf.WriteString(fmt.Sprintf("To: %s<br><br>", origTo))
+		bodyBuf.WriteString(origBody)
+		bodyBuf.WriteString("</div>")
+	} else {
+		bodyBuf.WriteString("---------- Forwarded message ----------\n")
+		bodyBuf.WriteString(fmt.Sprintf("From: %s\n", from))
+		bodyBuf.WriteString(fmt.Sprintf("Date: %s\n", date))
+		bodyBuf.WriteString(fmt.Sprintf("Subject: %s\n", subject))
+		bodyBuf.WriteString(fmt.Sprintf("To: %s\n", origTo))
+		bodyBuf.WriteString("\n")
+		bodyBuf.WriteString(origBody)
+	}
 
 	opts := MessageOptions{
 		To:          to,
 		Subject:     subject,
-		Body:        body.String(),
+		Body:        bodyBuf.String(),
 		ContentType: contentType,
 	}
 

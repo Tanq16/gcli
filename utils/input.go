@@ -150,6 +150,9 @@ func (m textAreaModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.textarea.SetWidth(msg.Width)
+		return m, nil
 	case tea.KeyMsg:
 		switch msg.Type {
 		case tea.KeyCtrlD:
@@ -170,7 +173,7 @@ func (m textAreaModel) View() string {
 	if m.done {
 		return ""
 	}
-	return m.textarea.View() + "\n(Ctrl+D to submit, Esc to cancel)"
+	return m.textarea.View() + "\n Ctrl+D to submit | Esc to cancel"
 }
 
 // PromptTextArea displays a multi-line text area and returns user input
@@ -184,6 +187,7 @@ func PromptTextArea(prompt string, placeholder string) (string, error) {
 
 	ta := textarea.New()
 	ta.Placeholder = placeholder
+	ta.SetHeight(20)
 	ta.Focus()
 
 	m := textAreaModel{textarea: ta}

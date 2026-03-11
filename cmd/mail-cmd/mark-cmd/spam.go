@@ -7,8 +7,8 @@ import (
 )
 
 var spamCmd = &cobra.Command{
-	Use:   "spam <message-id>",
-	Short: "Mark a message as spam",
+	Use:   "spam <thread-id>",
+	Short: "Mark a thread as spam",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := mail.MarkSpam(args[0]); err != nil {

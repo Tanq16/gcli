@@ -1,6 +1,7 @@
 package mailCmd
 
 import (
+	"fmt"
 	"strconv"
 
 	"github.com/spf13/cobra"
@@ -15,7 +16,7 @@ var listFlags struct {
 
 var listCmd = &cobra.Command{
 	Use:   "list [count]",
-	Short: "List recent messages (default: 20)",
+	Short: "List recent threads (default: 20)",
 	Args:  cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		count := int64(20)
@@ -27,26 +28,29 @@ var listCmd = &cobra.Command{
 			count = n
 		}
 
-		messages, err := mail.ListMessages(listFlags.label, listFlags.unread, count)
+		threads, err := mail.ListThreads(listFlags.label, listFlags.unread, count)
 		if err != nil {
-			u.PrintFatal("failed to list messages", err)
+			u.PrintFatal("failed to list threads", err)
 		}
 
-		if len(messages) == 0 {
-			u.PrintInfo("no messages found")
+		if len(threads) == 0 {
+			u.PrintInfo("no threads found")
 			return
 		}
 
-		headers := []string{"STATUS", "FROM", "SUBJECT", "DATE", "ID"}
+		headers := []string{"ID", "FROM", "SUBJECT", "DATE"}
 		var rows [][]string
-		for _, m := range messages {
-			status := " "
-			if m.Unread {
-				status = "*"
+		for _, t := range threads {
+			from := truncateString(t.From, 30)
+			subject := t.Subject
+			if t.MessageCount > 1 {
+				subject = fmt.Sprintf("[%d] %s", t.MessageCount, subject)
 			}
-			from := mail.TruncateString(m.From, 25)
-			subject := mail.TruncateString(m.Subject, 50)
-			rows = append(rows, []string{status, from, subject, m.Date, m.ID})
+			if t.Unread {
+				subject = "* " + subject
+			}
+			subject = truncateString(subject, 80)
+			rows = append(rows, []string{t.ID, from, subject, t.Date})
 		}
 
 		u.PrintTable(headers, rows)
@@ -55,6 +59,16 @@ var listCmd = &cobra.Command{
 
 func init() {
 	MailCmd.AddCommand(listCmd)
-	listCmd.Flags().StringVar(&listFlags.label, "label", "INBOX", "Label to list messages from")
-	listCmd.Flags().BoolVar(&listFlags.unread, "unread", false, "Only show unread messages")
+	listCmd.Flags().StringVar(&listFlags.label, "label", "INBOX", "Label to list threads from")
+	listCmd.Flags().BoolVar(&listFlags.unread, "unread", false, "Only show unread threads")
+}
+
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	if maxLen <= 3 {
+		return s[:maxLen]
+	}
+	return s[:maxLen-3] + "..."
 }

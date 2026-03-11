@@ -11,12 +11,13 @@ import (
 )
 
 var sendFlags struct {
-	to       []string
-	subject  string
-	cc       []string
-	bcc      []string
-	attach   []string
-	bodyFile string
+	to        []string
+	subject   string
+	cc        []string
+	bcc       []string
+	attach    []string
+	bodyFile  string
+	signature string
 }
 
 var sendCmd = &cobra.Command{
@@ -24,6 +25,7 @@ var sendCmd = &cobra.Command{
 	Short: "Compose and send an email",
 	Run: func(cmd *cobra.Command, args []string) {
 		body, contentType := resolveBody(sendFlags.bodyFile, true)
+		body, contentType = applySignature(body, contentType, sendFlags.signature)
 
 		opts := mail.MessageOptions{
 			To:          sendFlags.to,
@@ -50,6 +52,7 @@ func init() {
 	sendCmd.Flags().StringArrayVar(&sendFlags.bcc, "bcc", nil, "BCC recipient (repeatable)")
 	sendCmd.Flags().StringArrayVarP(&sendFlags.attach, "attach", "A", nil, "File attachment path (repeatable)")
 	sendCmd.Flags().StringVar(&sendFlags.bodyFile, "body-file", "", "Read body from file (.txt, .html, .md)")
+	sendCmd.Flags().StringVar(&sendFlags.signature, "signature", "default", "Gmail signature to append (\"default\", email alias, or \"none\")")
 	sendCmd.MarkFlagRequired("to")
 	sendCmd.MarkFlagRequired("subject")
 }
@@ -88,4 +91,27 @@ func resolveBody(bodyFile string, required bool) (string, string) {
 		u.PrintFatal("empty message body", nil)
 	}
 	return body, "text/plain"
+}
+
+func applySignature(body string, contentType string, sigFlag string) (string, string) {
+	if sigFlag == "none" {
+		return body, contentType
+	}
+
+	sig, err := mail.GetSignature(sigFlag)
+	if err != nil || sig == "" {
+		return body, contentType
+	}
+
+	if contentType == "text/plain" {
+		escaped := strings.ReplaceAll(body, "&", "&amp;")
+		escaped = strings.ReplaceAll(escaped, "<", "&lt;")
+		escaped = strings.ReplaceAll(escaped, ">", "&gt;")
+		escaped = strings.ReplaceAll(escaped, "\n", "<br>\n")
+		body = "<div>" + escaped + "</div>"
+		contentType = "text/html"
+	}
+
+	body = body + "<br><br>" + sig
+	return body, contentType
 }

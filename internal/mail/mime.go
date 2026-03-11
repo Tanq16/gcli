@@ -8,7 +8,6 @@ import (
 	"net/textproto"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	"google.golang.org/api/gmail/v1"
@@ -50,11 +49,8 @@ func extractBody(part *gmail.MessagePart) string {
 			return ""
 		}
 		mimeType := strings.ToLower(part.MimeType)
-		if mimeType == "text/plain" {
+		if mimeType == "text/plain" || mimeType == "text/html" {
 			return data
-		}
-		if mimeType == "text/html" {
-			return stripHTMLTags(data)
 		}
 	}
 
@@ -92,12 +88,6 @@ func decodeBase64URL(s string) (string, error) {
 
 func encodeBase64URL(data []byte) string {
 	return base64.URLEncoding.WithPadding(base64.NoPadding).EncodeToString(data)
-}
-
-var htmlTagRegex = regexp.MustCompile(`<[^>]*>`)
-
-func stripHTMLTags(s string) string {
-	return strings.TrimSpace(htmlTagRegex.ReplaceAllString(s, ""))
 }
 
 func buildRFC2822(opts MessageOptions) (string, error) {

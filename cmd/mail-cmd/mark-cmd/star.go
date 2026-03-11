@@ -7,8 +7,8 @@ import (
 )
 
 var starCmd = &cobra.Command{
-	Use:   "star <message-id>",
-	Short: "Star a message",
+	Use:   "star <thread-id>",
+	Short: "Star a thread",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := mail.Star(args[0]); err != nil {

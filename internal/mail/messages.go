@@ -1,23 +1,27 @@
 package mail
 
 import (
+	"fmt"
 	"strings"
+	"sync"
 	"time"
 
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/api/gmail/v1"
 )
 
-type MessageSummary struct {
-	ID      string
-	From    string
-	Subject string
-	Date    string
-	Snippet string
-	Unread  bool
+type ThreadSummary struct {
+	ID           string
+	From         string
+	Subject      string
+	Date         string
+	Snippet      string
+	Unread       bool
+	MessageCount int
 }
 
-func ListMessages(label string, unread bool, count int64) ([]MessageSummary, error) {
-	call := Service.Users.Messages.List("me").LabelIds(label).MaxResults(count)
+func ListThreads(label string, unread bool, count int64) ([]ThreadSummary, error) {
+	call := Service.Users.Threads.List("me").LabelIds(label).MaxResults(count)
 	if unread {
 		call = call.Q("is:unread")
 	}
@@ -27,79 +31,106 @@ func ListMessages(label string, unread bool, count int64) ([]MessageSummary, err
 		return nil, HandleError(err)
 	}
 
-	return fetchSummaries(resp.Messages)
+	return fetchThreadSummaries(resp.Threads)
 }
 
-func SearchMessages(query string, max int64) ([]MessageSummary, error) {
-	resp, err := Service.Users.Messages.List("me").Q(query).MaxResults(max).Do()
+func SearchThreads(query string, max int64) ([]ThreadSummary, error) {
+	resp, err := Service.Users.Threads.List("me").Q(query).MaxResults(max).Do()
 	if err != nil {
 		return nil, HandleError(err)
 	}
 
-	return fetchSummaries(resp.Messages)
+	return fetchThreadSummaries(resp.Threads)
 }
 
-func GetMessage(id string) (*gmail.Message, error) {
-	msg, err := Service.Users.Messages.Get("me", id).Format("full").Do()
+func GetThread(id string) (*gmail.Thread, error) {
+	thread, err := Service.Users.Threads.Get("me", id).Format("full").Do()
 	if err != nil {
 		return nil, HandleError(err)
 	}
-	return msg, nil
+	return thread, nil
 }
 
-func GetMessageMetadata(id string) (*gmail.Message, error) {
-	msg, err := Service.Users.Messages.Get("me", id).
+func GetThreadMetadata(id string) (*gmail.Thread, error) {
+	thread, err := Service.Users.Threads.Get("me", id).
 		Format("metadata").
 		MetadataHeaders("From", "To", "Subject", "Date").
 		Do()
 	if err != nil {
 		return nil, HandleError(err)
 	}
-	return msg, nil
+	return thread, nil
 }
 
-func fetchSummaries(messages []*gmail.Message) ([]MessageSummary, error) {
-	var summaries []MessageSummary
-	for _, m := range messages {
-		msg, err := GetMessageMetadata(m.Id)
-		if err != nil {
-			return nil, err
-		}
+func GetLastMessageInThread(threadID string) (*gmail.Message, error) {
+	thread, err := GetThread(threadID)
+	if err != nil {
+		return nil, err
+	}
+	msgs := thread.Messages
+	if len(msgs) == 0 {
+		return nil, fmt.Errorf("thread has no messages")
+	}
+	return msgs[len(msgs)-1], nil
+}
 
-		unread := false
-		for _, lbl := range msg.LabelIds {
-			if lbl == "UNREAD" {
-				unread = true
-				break
+func fetchThreadSummaries(threads []*gmail.Thread) ([]ThreadSummary, error) {
+	summaries := make([]ThreadSummary, len(threads))
+	var mu sync.Mutex
+	g := errgroup.Group{}
+	g.SetLimit(10)
+
+	for i, t := range threads {
+		idx := i
+		id := t.Id
+		g.Go(func() error {
+			thread, err := GetThreadMetadata(id)
+			if err != nil {
+				return err
 			}
-		}
 
-		from := extractMetadataHeader(msg, "From")
-		subject := extractMetadataHeader(msg, "Subject")
-		dateStr := extractMetadataHeader(msg, "Date")
+			msgs := thread.Messages
+			if len(msgs) == 0 {
+				return nil
+			}
+			last := msgs[len(msgs)-1]
 
-		summaries = append(summaries, MessageSummary{
-			ID:      msg.Id,
-			From:    formatFrom(from),
-			Subject: subject,
-			Date:    formatDate(dateStr),
-			Snippet: msg.Snippet,
-			Unread:  unread,
+			unread := false
+			for _, msg := range msgs {
+				for _, lbl := range msg.LabelIds {
+					if lbl == "UNREAD" {
+						unread = true
+						break
+					}
+				}
+				if unread {
+					break
+				}
+			}
+
+			from := extractHeader(last, "From")
+			subject := extractHeader(last, "Subject")
+			dateStr := extractHeader(last, "Date")
+
+			mu.Lock()
+			summaries[idx] = ThreadSummary{
+				ID:           thread.Id,
+				From:         formatFrom(from),
+				Subject:      subject,
+				Date:         formatDate(dateStr),
+				Snippet:      thread.Snippet,
+				Unread:       unread,
+				MessageCount: len(msgs),
+			}
+			mu.Unlock()
+			return nil
 		})
 	}
-	return summaries, nil
-}
 
-func extractMetadataHeader(msg *gmail.Message, name string) string {
-	if msg.Payload == nil {
-		return ""
+	if err := g.Wait(); err != nil {
+		return nil, err
 	}
-	for _, h := range msg.Payload.Headers {
-		if strings.EqualFold(h.Name, name) {
-			return h.Value
-		}
-	}
-	return ""
+	return summaries, nil
 }
 
 func formatFrom(from string) string {
@@ -161,16 +192,6 @@ func GetOriginalMessageID(msg *gmail.Message) string {
 
 func GetReferences(msg *gmail.Message) string {
 	return extractHeader(msg, "References")
-}
-
-func TruncateString(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	if maxLen <= 3 {
-		return s[:maxLen]
-	}
-	return s[:maxLen-3] + "..."
 }
 
 func GetAllRecipients(msg *gmail.Message) (to string, cc string) {

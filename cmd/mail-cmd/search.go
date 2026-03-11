@@ -1,6 +1,8 @@
 package mailCmd
 
 import (
+	"fmt"
+
 	"github.com/spf13/cobra"
 	"github.com/tanq16/gdrive/internal/mail"
 	u "github.com/tanq16/gdrive/utils"
@@ -12,29 +14,32 @@ var searchFlags struct {
 
 var searchCmd = &cobra.Command{
 	Use:   "search <query>",
-	Short: "Search messages using Gmail search syntax",
+	Short: "Search threads using Gmail search syntax",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		messages, err := mail.SearchMessages(args[0], searchFlags.max)
+		threads, err := mail.SearchThreads(args[0], searchFlags.max)
 		if err != nil {
 			u.PrintFatal("search failed", err)
 		}
 
-		if len(messages) == 0 {
-			u.PrintInfo("no messages found")
+		if len(threads) == 0 {
+			u.PrintInfo("no threads found")
 			return
 		}
 
-		headers := []string{"STATUS", "FROM", "SUBJECT", "DATE", "ID"}
+		headers := []string{"ID", "FROM", "SUBJECT", "DATE"}
 		var rows [][]string
-		for _, m := range messages {
-			status := " "
-			if m.Unread {
-				status = "*"
+		for _, t := range threads {
+			from := truncateString(t.From, 30)
+			subject := t.Subject
+			if t.MessageCount > 1 {
+				subject = fmt.Sprintf("[%d] %s", t.MessageCount, subject)
 			}
-			from := mail.TruncateString(m.From, 25)
-			subject := mail.TruncateString(m.Subject, 50)
-			rows = append(rows, []string{status, from, subject, m.Date, m.ID})
+			if t.Unread {
+				subject = "* " + subject
+			}
+			subject = truncateString(subject, 80)
+			rows = append(rows, []string{t.ID, from, subject, t.Date})
 		}
 
 		u.PrintTable(headers, rows)

@@ -33,7 +33,7 @@ func HandleError(err error) error {
 	}
 	switch gerr.Code {
 	case 404:
-		return fmt.Errorf("message not found")
+		return fmt.Errorf("not found")
 	case 403:
 		for _, e := range gerr.Errors {
 			if e.Reason == "userRateLimitExceeded" || e.Reason == "rateLimitExceeded" {

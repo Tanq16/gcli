@@ -7,8 +7,8 @@ import (
 )
 
 var unreadCmd = &cobra.Command{
-	Use:   "unread <message-id>",
-	Short: "Mark a message as unread",
+	Use:   "unread <thread-id>",
+	Short: "Mark a thread as unread",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := mail.MarkUnread(args[0]); err != nil {
