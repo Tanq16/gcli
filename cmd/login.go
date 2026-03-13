@@ -6,6 +6,11 @@ import (
 	u "github.com/tanq16/gcli/utils"
 )
 
+var loginFlags struct {
+	deviceLogin bool
+	manual      bool
+}
+
 var loginCmd = &cobra.Command{
 	Use:   "login",
 	Short: "Authenticate with Google services",
@@ -15,7 +20,14 @@ var loginCmd = &cobra.Command{
 			u.PrintFatal("failed to load credentials", err)
 		}
 
-		token, err := auth.Login(config)
+		mode := "default"
+		if loginFlags.deviceLogin {
+			mode = "device"
+		} else if loginFlags.manual {
+			mode = "manual"
+		}
+
+		token, err := auth.Login(config, mode)
 		if err != nil {
 			u.PrintFatal("login failed", err)
 		}
@@ -27,4 +39,8 @@ var loginCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(loginCmd)
+
+	loginCmd.Flags().BoolVar(&loginFlags.deviceLogin, "device-login", false, "Use device code flow (for headless/SSH environments)")
+	loginCmd.Flags().BoolVar(&loginFlags.manual, "manual", false, "Manually paste authorization code (last resort)")
+	loginCmd.MarkFlagsMutuallyExclusive("device-login", "manual")
 }
