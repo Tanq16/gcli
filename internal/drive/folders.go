@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/tanq16/gcli/internal/gapi"
 	driveapi "google.golang.org/api/drive/v3"
 )
 
@@ -25,7 +26,7 @@ func ListFolder(folderID string) ([]*driveapi.File, error) {
 			return nil
 		})
 	if err != nil {
-		return nil, HandleError(err)
+		return nil, gapi.HandleError(err)
 	}
 
 	sort.Slice(allFiles, func(i, j int) bool {
@@ -52,7 +53,7 @@ func CreateFolder(name string, parentID string) (*driveapi.File, error) {
 		SupportsAllDrives(true).
 		Do()
 	if err != nil {
-		return nil, HandleError(err)
+		return nil, gapi.HandleError(err)
 	}
 	return created, nil
 }
@@ -78,7 +79,7 @@ func MkdirP(path string) (*driveapi.File, error) {
 	if lastFile != nil {
 		f, err := Service.Files.Get(lastFile.Id).Fields(FileFields()).SupportsAllDrives(true).Do()
 		if err != nil {
-			return nil, HandleError(err)
+			return nil, gapi.HandleError(err)
 		}
 		return f, nil
 	}
@@ -98,7 +99,7 @@ func FindOrCreateFolder(name string, parentID string) (string, error) {
 		IncludeItemsFromAllDrives(true).
 		Do()
 	if err != nil {
-		return "", HandleError(err)
+		return "", gapi.HandleError(err)
 	}
 
 	if len(result.Files) > 0 {

@@ -3,6 +3,7 @@ package driveCmd
 import (
 	"github.com/spf13/cobra"
 	"github.com/tanq16/gcli/internal/drive"
+	"github.com/tanq16/gcli/internal/gapi"
 	u "github.com/tanq16/gcli/utils"
 	driveapi "google.golang.org/api/drive/v3"
 )
@@ -41,7 +42,7 @@ var permListCmd = &cobra.Command{
 			SupportsAllDrives(true).
 			Do()
 		if err != nil {
-			u.PrintFatal("failed to get permissions", drive.HandleError(err))
+			u.PrintFatal("failed to get permissions", gapi.HandleError(err))
 		}
 
 		if len(perms.Permissions) == 0 {
@@ -89,7 +90,7 @@ var permCreateCmd = &cobra.Command{
 			SupportsAllDrives(true).
 			Do()
 		if err != nil {
-			u.PrintFatal("failed to create permission", drive.HandleError(err))
+			u.PrintFatal("failed to create permission", gapi.HandleError(err))
 		}
 
 		u.PrintSuccess("created permission " + created.Id + " (" + created.Role + ")")
@@ -111,7 +112,7 @@ var permDeleteCmd = &cobra.Command{
 			SupportsAllDrives(true).
 			Do()
 		if err != nil {
-			u.PrintFatal("failed to delete permission", drive.HandleError(err))
+			u.PrintFatal("failed to delete permission", gapi.HandleError(err))
 		}
 
 		u.PrintSuccess("deleted permission " + permID)

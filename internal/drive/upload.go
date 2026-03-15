@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/tanq16/gcli/internal/gapi"
 	u "github.com/tanq16/gcli/utils"
 	driveapi "google.golang.org/api/drive/v3"
 	"google.golang.org/api/googleapi"
@@ -35,7 +36,7 @@ func UploadFile(localPath string, parentID string) (*driveapi.File, error) {
 		SupportsAllDrives(true).
 		Do()
 	if err != nil {
-		return nil, HandleError(err)
+		return nil, gapi.HandleError(err)
 	}
 	return created, nil
 }
@@ -59,7 +60,7 @@ func UpdateFile(fileID string, localPath string) (*driveapi.File, error) {
 		SupportsAllDrives(true).
 		Do()
 	if err != nil {
-		return nil, HandleError(err)
+		return nil, gapi.HandleError(err)
 	}
 	return updated, nil
 }

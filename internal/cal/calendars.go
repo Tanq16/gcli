@@ -1,6 +1,7 @@
 package cal
 
 import (
+	"github.com/tanq16/gcli/internal/gapi"
 	"google.golang.org/api/calendar/v3"
 )
 
@@ -16,7 +17,7 @@ type CalendarInfo struct {
 func ListCalendars() ([]CalendarInfo, error) {
 	list, err := Service.CalendarList.List().Do()
 	if err != nil {
-		return nil, HandleError(err)
+		return nil, gapi.HandleError(err)
 	}
 
 	var calendars []CalendarInfo

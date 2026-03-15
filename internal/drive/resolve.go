@@ -5,6 +5,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/tanq16/gcli/internal/gapi"
 	driveapi "google.golang.org/api/drive/v3"
 )
 
@@ -80,7 +81,7 @@ func ResolvePath(path string) (*driveapi.File, error) {
 			IncludeItemsFromAllDrives(true).
 			Do()
 		if err != nil {
-			return nil, HandleError(err)
+			return nil, gapi.HandleError(err)
 		}
 
 		if len(result.Files) == 0 {
@@ -112,7 +113,7 @@ func ResolveOrID(path string, id string) (*driveapi.File, error) {
 	if id != "" {
 		f, err := Service.Files.Get(id).Fields(FileFields()).SupportsAllDrives(true).Do()
 		if err != nil {
-			return nil, HandleError(err)
+			return nil, gapi.HandleError(err)
 		}
 		return f, nil
 	}

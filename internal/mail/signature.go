@@ -1,12 +1,16 @@
 package mail
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/tanq16/gcli/internal/gapi"
+)
 
 func GetSignature(sendAsEmail string) (string, error) {
 	if sendAsEmail == "default" {
 		resp, err := Service.Users.Settings.SendAs.List("me").Do()
 		if err != nil {
-			return "", HandleError(err)
+			return "", gapi.HandleError(err)
 		}
 		for _, sa := range resp.SendAs {
 			if sa.IsDefault {
@@ -23,7 +27,7 @@ func GetSignature(sendAsEmail string) (string, error) {
 
 	sa, err := Service.Users.Settings.SendAs.Get("me", sendAsEmail).Do()
 	if err != nil {
-		return "", HandleError(err)
+		return "", gapi.HandleError(err)
 	}
 	return sa.Signature, nil
 }

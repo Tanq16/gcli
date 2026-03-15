@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/tanq16/gcli/internal/gapi"
 	"google.golang.org/api/gmail/v1"
 )
 
@@ -21,7 +22,7 @@ func SendMessage(opts MessageOptions) error {
 	}
 
 	_, err = Service.Users.Messages.Send("me", msg).Do()
-	return HandleError(err)
+	return gapi.HandleError(err)
 }
 
 func ReplyMessage(threadID string, body string, contentType string, replyAll bool, attachments []string) error {

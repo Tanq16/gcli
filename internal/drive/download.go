@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/tanq16/gcli/internal/gapi"
 	u "github.com/tanq16/gcli/utils"
 	driveapi "google.golang.org/api/drive/v3"
 )
@@ -19,7 +20,7 @@ func DownloadFile(file *driveapi.File, localPath string) error {
 
 	resp, err := Service.Files.Get(file.Id).SupportsAllDrives(true).Download()
 	if err != nil {
-		return HandleError(err)
+		return gapi.HandleError(err)
 	}
 	defer resp.Body.Close()
 
@@ -50,7 +51,7 @@ func ExportFile(file *driveapi.File, localPath string) error {
 
 	resp, err := Service.Files.Export(file.Id, exportMIME).Download()
 	if err != nil {
-		return HandleError(err)
+		return gapi.HandleError(err)
 	}
 	defer resp.Body.Close()
 

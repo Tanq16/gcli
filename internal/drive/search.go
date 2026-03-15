@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/tanq16/gcli/internal/gapi"
 	driveapi "google.golang.org/api/drive/v3"
 )
 
@@ -90,7 +91,7 @@ func Search(opts SearchOptions) ([]*driveapi.File, error) {
 		return nil
 	})
 	if err != nil && err.Error() != "limit reached" {
-		return nil, HandleError(err)
+		return nil, gapi.HandleError(err)
 	}
 
 	// Apply size filters client-side (Drive API doesn't support size queries)

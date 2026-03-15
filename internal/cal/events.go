@@ -4,6 +4,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/tanq16/gcli/internal/gapi"
 	"google.golang.org/api/calendar/v3"
 )
 
@@ -16,7 +17,7 @@ func ListEvents(calendarID string, timeMin, timeMax time.Time) ([]*calendar.Even
 		OrderBy("startTime").
 		Do()
 	if err != nil {
-		return nil, HandleError(err)
+		return nil, gapi.HandleError(err)
 	}
 	return events.Items, nil
 }
@@ -49,7 +50,7 @@ func ListEventsAllCalendars(timeMin, timeMax time.Time) ([]*calendar.Event, erro
 func GetEvent(calendarID, eventID string) (*calendar.Event, error) {
 	event, err := Service.Events.Get(calendarID, eventID).Do()
 	if err != nil {
-		return nil, HandleError(err)
+		return nil, gapi.HandleError(err)
 	}
 	return event, nil
 }
@@ -58,7 +59,7 @@ func GetEvent(calendarID, eventID string) (*calendar.Event, error) {
 func CreateEvent(calendarID string, event *calendar.Event) (*calendar.Event, error) {
 	created, err := Service.Events.Insert(calendarID, event).Do()
 	if err != nil {
-		return nil, HandleError(err)
+		return nil, gapi.HandleError(err)
 	}
 	return created, nil
 }
@@ -67,7 +68,7 @@ func CreateEvent(calendarID string, event *calendar.Event) (*calendar.Event, err
 func UpdateEvent(calendarID, eventID string, event *calendar.Event) (*calendar.Event, error) {
 	updated, err := Service.Events.Update(calendarID, eventID, event).Do()
 	if err != nil {
-		return nil, HandleError(err)
+		return nil, gapi.HandleError(err)
 	}
 	return updated, nil
 }
@@ -82,7 +83,7 @@ func DeleteEvent(calendarID, eventID string, notify bool) error {
 	}
 	err := call.Do()
 	if err != nil {
-		return HandleError(err)
+		return gapi.HandleError(err)
 	}
 	return nil
 }

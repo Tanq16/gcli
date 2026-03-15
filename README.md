@@ -34,7 +34,8 @@ Download from [releases](https://github.com/tanq16/gcli/releases):
 
 ```bash
 # Linux/macOS
-curl -sL https://github.com/tanq16/gcli/releases/latest/download/gcli-$(uname -s)-$(uname -m) -o gcli
+ARCH=$(uname -m); [ "$ARCH" = "x86_64" ] && ARCH=amd64; [ "$ARCH" = "aarch64" ] && ARCH=arm64
+curl -sL https://github.com/tanq16/gcli/releases/latest/download/gcli-$(uname -s | tr '[:upper:]' '[:lower:]')-$ARCH -o gcli
 chmod +x gcli
 sudo mv gcli /usr/local/bin/
 ```

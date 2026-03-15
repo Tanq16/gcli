@@ -27,12 +27,9 @@ var loginCmd = &cobra.Command{
 			mode = "manual"
 		}
 
-		token, err := auth.Login(config, mode)
-		if err != nil {
+		if _, err := auth.Login(config, mode); err != nil {
 			u.PrintFatal("login failed", err)
 		}
-
-		_ = token
 		u.PrintSuccess("authenticated successfully — token saved")
 	},
 }

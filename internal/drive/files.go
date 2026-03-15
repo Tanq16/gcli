@@ -1,6 +1,7 @@
 package drive
 
 import (
+	"github.com/tanq16/gcli/internal/gapi"
 	driveapi "google.golang.org/api/drive/v3"
 )
 
@@ -11,7 +12,7 @@ func GetFile(fileID string) (*driveapi.File, error) {
 		SupportsAllDrives(true).
 		Do()
 	if err != nil {
-		return nil, HandleError(err)
+		return nil, gapi.HandleError(err)
 	}
 	return f, nil
 }
@@ -22,7 +23,7 @@ func DeleteFile(fileID string) error {
 		SupportsAllDrives(true).
 		Do()
 	if err != nil {
-		return HandleError(err)
+		return gapi.HandleError(err)
 	}
 	return nil
 }
@@ -38,7 +39,7 @@ func CopyFile(fileID string, name string, parentID string) (*driveapi.File, erro
 		SupportsAllDrives(true).
 		Do()
 	if err != nil {
-		return nil, HandleError(err)
+		return nil, gapi.HandleError(err)
 	}
 	return copied, nil
 }
@@ -59,7 +60,7 @@ func MoveFile(fileID string, newName string, currentParentID string, newParentID
 
 	moved, err := call.Do()
 	if err != nil {
-		return nil, HandleError(err)
+		return nil, gapi.HandleError(err)
 	}
 	return moved, nil
 }

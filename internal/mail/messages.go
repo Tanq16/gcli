@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/tanq16/gcli/internal/gapi"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/api/gmail/v1"
 )
@@ -29,7 +30,7 @@ func ListThreads(ctx context.Context, label string, unread bool, count int64) ([
 
 	resp, err := call.Do()
 	if err != nil {
-		return nil, HandleError(err)
+		return nil, gapi.HandleError(err)
 	}
 
 	return fetchThreadSummaries(ctx, resp.Threads)
@@ -38,7 +39,7 @@ func ListThreads(ctx context.Context, label string, unread bool, count int64) ([
 func SearchThreads(ctx context.Context, query string, max int64) ([]ThreadSummary, error) {
 	resp, err := Service.Users.Threads.List("me").Q(query).MaxResults(max).Do()
 	if err != nil {
-		return nil, HandleError(err)
+		return nil, gapi.HandleError(err)
 	}
 
 	return fetchThreadSummaries(ctx, resp.Threads)
@@ -47,7 +48,7 @@ func SearchThreads(ctx context.Context, query string, max int64) ([]ThreadSummar
 func GetThread(id string) (*gmail.Thread, error) {
 	thread, err := Service.Users.Threads.Get("me", id).Format("full").Do()
 	if err != nil {
-		return nil, HandleError(err)
+		return nil, gapi.HandleError(err)
 	}
 	return thread, nil
 }
@@ -58,7 +59,7 @@ func GetThreadMetadata(id string) (*gmail.Thread, error) {
 		MetadataHeaders("From", "To", "Subject", "Date").
 		Do()
 	if err != nil {
-		return nil, HandleError(err)
+		return nil, gapi.HandleError(err)
 	}
 	return thread, nil
 }
