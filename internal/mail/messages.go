@@ -183,14 +183,6 @@ func ExtractHeader(msg *gmail.Message, name string) string {
 	return extractHeader(msg, name)
 }
 
-func FormatFrom(from string) string {
-	return formatFrom(from)
-}
-
-func FormatFullFrom(msg *gmail.Message) string {
-	return extractHeader(msg, "From")
-}
-
 func GetOriginalMessageID(msg *gmail.Message) string {
 	return extractHeader(msg, "Message-ID")
 }

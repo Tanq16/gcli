@@ -2,6 +2,7 @@ package cal
 
 import (
 	"fmt"
+	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -57,26 +58,22 @@ func ParseTime(input string) (time.Time, error) {
 
 	loc := time.Now().Location()
 
-	// 1. Try ISO 8601 layouts
 	for _, layout := range isoLayouts {
 		if t, err := time.ParseInLocation(layout, input, loc); err == nil {
 			return t, nil
 		}
 	}
 
-	// 2. Try time-only (implies today)
 	if t, ok := parseTimeOnly(input, loc); ok {
 		return setDate(t, time.Now(), loc), nil
 	}
 
 	lower := strings.ToLower(input)
 
-	// 3. Relative day: "today ..." or "tomorrow ..."
 	if strings.HasPrefix(lower, "today") || strings.HasPrefix(lower, "tomorrow") {
 		return parseRelativeDay(lower, loc)
 	}
 
-	// 4. Weekday: "next monday 9am", "friday 3pm"
 	return parseWeekday(lower, loc)
 }
 
@@ -124,20 +121,17 @@ func parseRelativeDay(lower string, loc *time.Location) (time.Time, error) {
 
 // parseWeekday handles "friday 3pm", "next monday 9am", etc.
 func parseWeekday(lower string, loc *time.Location) (time.Time, error) {
-	// Strip optional "next" prefix
 	rest := lower
 	if strings.HasPrefix(rest, "next ") {
 		rest = strings.TrimPrefix(rest, "next ")
 	}
 
-	// Try to match a weekday at the start
 	parts := strings.SplitN(rest, " ", 2)
 	wd, ok := weekdays[parts[0]]
 	if !ok {
 		return time.Time{}, fmt.Errorf("cannot parse time: %q", lower)
 	}
 
-	// Calculate days forward
 	now := time.Now()
 	today := now.Weekday()
 	daysForward := (int(wd) - int(today) + 7) % 7
@@ -146,7 +140,6 @@ func parseWeekday(lower string, loc *time.Location) (time.Time, error) {
 	}
 	targetDate := now.AddDate(0, 0, daysForward)
 
-	// Parse time part if present
 	if len(parts) < 2 || strings.TrimSpace(parts[1]) == "" {
 		return time.Date(targetDate.Year(), targetDate.Month(), targetDate.Day(), 0, 0, 0, 0, loc), nil
 	}
@@ -202,4 +195,22 @@ func FormatTime(t time.Time) string {
 // FormatDateHeader formats a date as "Monday, January 2, 2006"
 func FormatDateHeader(t time.Time) string {
 	return t.Format("Monday, January 2, 2006")
+}
+
+// LocalTimezoneName returns the IANA timezone name (e.g. "America/Los_Angeles")
+// for the system's local timezone. Falls back to "UTC" if detection fails.
+func LocalTimezoneName() string {
+	if tz := os.Getenv("TZ"); tz != "" {
+		return tz
+	}
+	if link, err := os.Readlink("/etc/localtime"); err == nil {
+		if idx := strings.Index(link, "zoneinfo/"); idx != -1 {
+			return link[idx+len("zoneinfo/"):]
+		}
+	}
+	name, _ := time.Now().Zone()
+	if name != "" && name != "Local" {
+		return name
+	}
+	return "UTC"
 }

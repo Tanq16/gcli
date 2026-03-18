@@ -103,5 +103,5 @@ func collectDayRows(events []*calendar.Event, dayKey string) [][]string {
 func init() {
 	CalCmd.AddCommand(listCmd)
 	listCmd.Flags().StringVar(&listFlags.calendar, "calendar", "primary", "Calendar ID to query")
-	listCmd.Flags().BoolVar(&listFlags.allCalendars, "all-calendars", false, "Query all calendars")
+	listCmd.Flags().BoolVarP(&listFlags.allCalendars, "all-calendars", "a", false, "Query all calendars")
 }

@@ -76,7 +76,6 @@ func UploadFolder(localPath string, parentID string) error {
 	fileCount := 0
 	totalFiles := 0
 
-	// Count files first for progress
 	filepath.WalkDir(localPath, func(path string, d fs.DirEntry, err error) error {
 		if err == nil && !d.IsDir() {
 			totalFiles++

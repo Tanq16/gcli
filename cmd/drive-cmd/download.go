@@ -22,7 +22,6 @@ var downloadCmd = &cobra.Command{
 			u.PrintFatal("failed to resolve remote path", err)
 		}
 
-		// Determine local destination
 		localPath := f.Name
 		if len(args) > 1 {
 			localPath = args[1]
@@ -45,5 +44,5 @@ var downloadCmd = &cobra.Command{
 
 func init() {
 	DriveCmd.AddCommand(downloadCmd)
-	downloadCmd.Flags().StringVar(&downloadFlags.id, "id", "", "Use file ID instead of path")
+	downloadCmd.Flags().StringVarP(&downloadFlags.id, "id", "i", "", "Use file ID instead of path")
 }

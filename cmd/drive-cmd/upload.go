@@ -15,7 +15,6 @@ var uploadCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		localPath := args[0]
 
-		// Determine remote parent
 		remotePath := "/"
 		if len(args) > 1 {
 			remotePath = args[1]
@@ -30,7 +29,6 @@ var uploadCmd = &cobra.Command{
 			u.PrintFatal("remote path must be a folder", nil)
 		}
 
-		// Check if local path is a file or directory
 		info, err := os.Stat(localPath)
 		if err != nil {
 			u.PrintFatal("cannot access "+localPath, err)

@@ -56,5 +56,5 @@ var infoCmd = &cobra.Command{
 
 func init() {
 	DriveCmd.AddCommand(infoCmd)
-	infoCmd.Flags().StringVar(&infoFlags.id, "id", "", "Use file ID instead of path")
+	infoCmd.Flags().StringVarP(&infoFlags.id, "id", "i", "", "Use file ID instead of path")
 }

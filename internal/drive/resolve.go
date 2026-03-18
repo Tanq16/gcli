@@ -39,13 +39,11 @@ func ResolvePath(path string) (*driveapi.File, error) {
 		return Service.Files.Get("root").Fields(FileFields()).SupportsAllDrives(true).Do()
 	}
 
-	// Check cache for full path
 	if id, ok := pathCache.get(path); ok {
 		f, err := Service.Files.Get(id).Fields(FileFields()).SupportsAllDrives(true).Do()
 		if err == nil {
 			return f, nil
 		}
-		// Cache entry stale, continue with walk
 	}
 
 	parts := strings.Split(path, "/")
@@ -59,7 +57,6 @@ func ResolvePath(path string) (*driveapi.File, error) {
 			currentPath = currentPath + "/" + part
 		}
 
-		// Check cache for this prefix
 		if id, ok := pathCache.get(currentPath); ok {
 			parentID = id
 			continue
@@ -68,7 +65,6 @@ func ResolvePath(path string) (*driveapi.File, error) {
 		escapedPart := strings.ReplaceAll(part, "'", "\\'")
 		q := fmt.Sprintf("name = '%s' and '%s' in parents and trashed = false", escapedPart, parentID)
 
-		// For non-final segments, require folders
 		if i < len(parts)-1 {
 			q += " and mimeType = 'application/vnd.google-apps.folder'"
 		}
@@ -104,7 +100,6 @@ func ResolvePath(path string) (*driveapi.File, error) {
 		}
 	}
 
-	// Should not reach here, but just in case
 	return Service.Files.Get(parentID).Fields(FileFields()).SupportsAllDrives(true).Do()
 }
 

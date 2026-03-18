@@ -125,9 +125,9 @@ func init() {
 	permissionsCmd.AddCommand(permCreateCmd)
 	permissionsCmd.AddCommand(permDeleteCmd)
 
-	permListCmd.Flags().StringVar(&permListFlags.id, "id", "", "Use file ID instead of path")
-	permCreateCmd.Flags().StringVar(&permCreateFlags.permType, "type", "", "Permission type (user, group, domain, anyone)")
-	permCreateCmd.Flags().StringVar(&permCreateFlags.role, "role", "", "Permission role (reader, writer, commenter)")
+	permListCmd.Flags().StringVarP(&permListFlags.id, "id", "i", "", "Use file ID instead of path")
+	permCreateCmd.Flags().StringVarP(&permCreateFlags.permType, "type", "t", "", "Permission type (user, group, domain, anyone)")
+	permCreateCmd.Flags().StringVarP(&permCreateFlags.role, "role", "r", "", "Permission role (reader, writer, commenter)")
 	permCreateCmd.Flags().StringVar(&permCreateFlags.email, "email", "", "Email address for the permission")
-	permDeleteCmd.Flags().StringVar(&permDeleteFlags.id, "id", "", "Use file ID instead of path")
+	permDeleteCmd.Flags().StringVarP(&permDeleteFlags.id, "id", "i", "", "Use file ID instead of path")
 }

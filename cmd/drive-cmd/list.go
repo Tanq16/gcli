@@ -43,7 +43,6 @@ var listCmd = &cobra.Command{
 			return
 		}
 
-		// Apply filter if set
 		if listFlags.filter != "" {
 			filter := strings.ToLower(listFlags.filter)
 			var filtered []*driveapi.File
@@ -89,6 +88,6 @@ var listCmd = &cobra.Command{
 
 func init() {
 	DriveCmd.AddCommand(listCmd)
-	listCmd.Flags().StringVar(&listFlags.id, "id", "", "Use folder ID instead of path")
+	listCmd.Flags().StringVarP(&listFlags.id, "id", "i", "", "Use folder ID instead of path")
 	listCmd.Flags().StringVarP(&listFlags.filter, "filter", "F", "", "Filter results by name")
 }

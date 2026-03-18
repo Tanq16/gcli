@@ -25,13 +25,11 @@ var editCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		eventID := args[0]
 
-		// Fetch existing event
 		event, err := cal.GetEvent(editFlags.calendarID, eventID)
 		if err != nil {
 			u.PrintFatal("failed to get event", err)
 		}
 
-		// Modify only fields that were explicitly set
 		if cmd.Flags().Changed("title") {
 			event.Summary = editFlags.title
 		}
@@ -42,7 +40,7 @@ var editCmd = &cobra.Command{
 				u.PrintFatal("invalid --start time", err)
 			}
 			event.Start.DateTime = cal.ToRFC3339(startTime)
-			event.Start.TimeZone = startTime.Location().String()
+			event.Start.TimeZone = cal.LocalTimezoneName()
 		}
 
 		if cmd.Flags().Changed("end") {
@@ -51,7 +49,7 @@ var editCmd = &cobra.Command{
 				u.PrintFatal("invalid --end time", err)
 			}
 			event.End.DateTime = cal.ToRFC3339(endTime)
-			event.End.TimeZone = endTime.Location().String()
+			event.End.TimeZone = cal.LocalTimezoneName()
 		}
 
 		if cmd.Flags().Changed("location") {
@@ -93,10 +91,10 @@ var editCmd = &cobra.Command{
 
 func init() {
 	CalCmd.AddCommand(editCmd)
-	editCmd.Flags().StringVar(&editFlags.title, "title", "", "New event title")
-	editCmd.Flags().StringVar(&editFlags.start, "start", "", "New start time")
-	editCmd.Flags().StringVar(&editFlags.end, "end", "", "New end time")
-	editCmd.Flags().StringVar(&editFlags.location, "location", "", "New location")
+	editCmd.Flags().StringVarP(&editFlags.title, "title", "t", "", "New event title")
+	editCmd.Flags().StringVarP(&editFlags.start, "start", "s", "", "New start time")
+	editCmd.Flags().StringVarP(&editFlags.end, "end", "e", "", "New end time")
+	editCmd.Flags().StringVarP(&editFlags.location, "location", "l", "", "New location")
 	editCmd.Flags().StringVar(&editFlags.description, "description", "", "New description")
 	editCmd.Flags().StringArrayVar(&editFlags.addAttendees, "add-attendee", nil, "Add attendee email (repeatable)")
 	editCmd.Flags().StringArrayVar(&editFlags.removeAttendees, "remove-attendee", nil, "Remove attendee email (repeatable)")

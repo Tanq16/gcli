@@ -75,7 +75,6 @@ func MkdirP(path string) (*driveapi.File, error) {
 		lastFile = &driveapi.File{Id: id, Name: part, MimeType: "application/vnd.google-apps.folder"}
 	}
 
-	// Fetch the full file metadata for the final folder
 	if lastFile != nil {
 		f, err := Service.Files.Get(lastFile.Id).Fields(FileFields()).SupportsAllDrives(true).Do()
 		if err != nil {

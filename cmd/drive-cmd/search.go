@@ -76,12 +76,12 @@ var searchCmd = &cobra.Command{
 
 func init() {
 	DriveCmd.AddCommand(searchCmd)
-	searchCmd.Flags().StringVar(&searchFlags.fileType, "type", "", "Filter by type (file, folder)")
-	searchCmd.Flags().StringSliceVar(&searchFlags.extensions, "extensions", nil, "Filter by file extensions")
+	searchCmd.Flags().StringVarP(&searchFlags.fileType, "type", "t", "", "Filter by type (file, folder)")
+	searchCmd.Flags().StringSliceVarP(&searchFlags.extensions, "extensions", "e", nil, "Filter by file extensions")
 	searchCmd.Flags().StringVar(&searchFlags.createdIn, "created-in", "", "Filter by creation time range (YYYY-MM-DD..YYYY-MM-DD)")
 	searchCmd.Flags().StringVar(&searchFlags.updatedIn, "updated-in", "", "Filter by modification time range (YYYY-MM-DD..YYYY-MM-DD)")
 	searchCmd.Flags().Int64Var(&searchFlags.sizeMin, "size-min", 0, "Minimum file size in bytes")
 	searchCmd.Flags().Int64Var(&searchFlags.sizeMax, "size-max", 0, "Maximum file size in bytes")
-	searchCmd.Flags().IntVar(&searchFlags.limit, "limit", 100, "Maximum number of results")
+	searchCmd.Flags().IntVarP(&searchFlags.limit, "limit", "n", 100, "Maximum number of results")
 	searchCmd.Flags().StringVar(&searchFlags.sort, "sort", "", "Sort by (name, modifiedTime, size)")
 }

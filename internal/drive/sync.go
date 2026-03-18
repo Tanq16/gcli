@@ -346,9 +346,21 @@ func ExecutePull(ctx context.Context, plan *SyncPlan, remoteFolderID string, loc
 
 	if len(plan.Deletes) > 0 {
 		u.PrintInfo(fmt.Sprintf("deleting %d local files...", len(plan.Deletes)))
+		g, ctx := errgroup.WithContext(ctx)
+		g.SetLimit(concurrency)
 		for _, action := range plan.Deletes {
-			localPath := filepath.Join(localRoot, action.RelPath)
-			os.Remove(localPath)
+			g.Go(func() error {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				default:
+				}
+				localPath := filepath.Join(localRoot, action.RelPath)
+				return os.Remove(localPath)
+			})
+		}
+		if err := g.Wait(); err != nil {
+			return err
 		}
 	}
 

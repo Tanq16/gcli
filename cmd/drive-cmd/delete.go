@@ -30,5 +30,5 @@ var deleteCmd = &cobra.Command{
 
 func init() {
 	DriveCmd.AddCommand(deleteCmd)
-	deleteCmd.Flags().StringVar(&deleteFlags.id, "id", "", "Use file ID instead of path")
+	deleteCmd.Flags().StringVarP(&deleteFlags.id, "id", "i", "", "Use file ID instead of path")
 }

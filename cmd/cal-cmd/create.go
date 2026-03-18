@@ -44,19 +44,19 @@ var createCmd = &cobra.Command{
 			}
 			endTime = startTime.Add(dur)
 		} else {
-			// Default: 30 minutes
 			endTime = startTime.Add(30 * time.Minute)
 		}
 
+		tz := cal.LocalTimezoneName()
 		event := &calendar.Event{
 			Summary: title,
 			Start: &calendar.EventDateTime{
 				DateTime: cal.ToRFC3339(startTime),
-				TimeZone: startTime.Location().String(),
+				TimeZone: tz,
 			},
 			End: &calendar.EventDateTime{
 				DateTime: cal.ToRFC3339(endTime),
-				TimeZone: endTime.Location().String(),
+				TimeZone: tz,
 			},
 		}
 
@@ -83,10 +83,10 @@ var createCmd = &cobra.Command{
 
 func init() {
 	CalCmd.AddCommand(createCmd)
-	createCmd.Flags().StringVar(&createFlags.start, "start", "", "Start time (e.g. 'tomorrow 2pm', '2025-03-15T10:00')")
-	createCmd.Flags().StringVar(&createFlags.end, "end", "", "End time (mutually exclusive with --duration)")
-	createCmd.Flags().StringVar(&createFlags.duration, "duration", "", "Duration (e.g. '1h', '30m')")
-	createCmd.Flags().StringVar(&createFlags.location, "location", "", "Event location")
+	createCmd.Flags().StringVarP(&createFlags.start, "start", "s", "", "Start time (e.g. 'tomorrow 2pm', '2025-03-15T10:00')")
+	createCmd.Flags().StringVarP(&createFlags.end, "end", "e", "", "End time (mutually exclusive with --duration)")
+	createCmd.Flags().StringVarP(&createFlags.duration, "duration", "d", "", "Duration (e.g. '1h', '30m')")
+	createCmd.Flags().StringVarP(&createFlags.location, "location", "l", "", "Event location")
 	createCmd.Flags().StringVar(&createFlags.description, "description", "", "Event description")
 	createCmd.Flags().StringArrayVar(&createFlags.attendees, "attendee", nil, "Attendee email (repeatable)")
 	createCmd.Flags().StringVar(&createFlags.calendarID, "calendar", "primary", "Calendar ID")

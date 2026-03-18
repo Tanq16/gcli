@@ -29,6 +29,6 @@ var deleteCmd = &cobra.Command{
 
 func init() {
 	CalCmd.AddCommand(deleteCmd)
-	deleteCmd.Flags().BoolVar(&deleteFlags.notify, "notify", false, "Notify attendees about deletion")
+	deleteCmd.Flags().BoolVarP(&deleteFlags.notify, "notify", "n", false, "Notify attendees about deletion")
 	deleteCmd.Flags().StringVar(&deleteFlags.calendar, "calendar", "primary", "Calendar ID")
 }

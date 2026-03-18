@@ -33,7 +33,6 @@ func ListEventsAllCalendars(timeMin, timeMax time.Time) ([]*calendar.Event, erro
 	for _, c := range calendars {
 		events, err := ListEvents(c.ID, timeMin, timeMax)
 		if err != nil {
-			// Skip calendars we can't read
 			continue
 		}
 		allEvents = append(allEvents, events...)

@@ -47,5 +47,5 @@ var copyCmd = &cobra.Command{
 
 func init() {
 	DriveCmd.AddCommand(copyCmd)
-	copyCmd.Flags().StringVar(&copyFlags.name, "name", "", "Name for the copy")
+	copyCmd.Flags().StringVarP(&copyFlags.name, "name", "n", "", "Name for the copy")
 }

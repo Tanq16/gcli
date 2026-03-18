@@ -44,7 +44,6 @@ func ExportFile(file *driveapi.File, localPath string) error {
 	exportMIME := ExportMIME(file.MimeType)
 	ext := ExportExtension(file.MimeType)
 
-	// Append extension if not already present
 	if !strings.HasSuffix(localPath, ext) {
 		localPath = localPath + ext
 	}

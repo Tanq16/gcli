@@ -94,7 +94,6 @@ func Search(opts SearchOptions) ([]*driveapi.File, error) {
 		return nil, gapi.HandleError(err)
 	}
 
-	// Apply size filters client-side (Drive API doesn't support size queries)
 	if opts.SizeMin > 0 || opts.SizeMax > 0 {
 		var filtered []*driveapi.File
 		for _, f := range allFiles {
@@ -109,7 +108,6 @@ func Search(opts SearchOptions) ([]*driveapi.File, error) {
 		allFiles = filtered
 	}
 
-	// Enforce limit
 	if opts.Limit > 0 && len(allFiles) > opts.Limit {
 		allFiles = allFiles[:opts.Limit]
 	}
@@ -125,7 +123,6 @@ func parseTimeRange(r string) (string, string) {
 		end := normalizeDate(strings.TrimSpace(parts[1]))
 		return start, end
 	}
-	// Single date — treat as "from this date onward"
 	return normalizeDate(strings.TrimSpace(r)), ""
 }
 

@@ -23,10 +23,8 @@ var moveCmd = &cobra.Command{
 			currentParentID = src.Parents[0]
 		}
 
-		// Resolve destination parent and determine new name
 		dstParentID, dstName, err := drive.ResolveParent(args[1])
 		if err != nil {
-			// If parent resolution fails, treat dst as just a rename in the same folder
 			dstName = path.Base(args[1])
 			dstParentID = currentParentID
 		}
