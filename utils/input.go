@@ -5,9 +5,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/textarea"
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/textarea"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
 )
 
 // stdinScanner is shared across calls so sequential PromptInput/PromptPassword
@@ -64,13 +64,14 @@ func (m inputModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		switch msg.Type {
-		case tea.KeyEnter:
+	case tea.KeyPressMsg:
+		k := msg.Key()
+		switch {
+		case k.Code == tea.KeyEnter:
 			m.value = m.textInput.Value()
 			m.done = true
 			return m, tea.Quit
-		case tea.KeyCtrlC, tea.KeyEsc:
+		case k.Code == tea.KeyEscape || (k.Code == 'c' && k.Mod == tea.ModCtrl):
 			m.done = true
 			return m, tea.Quit
 		}
@@ -80,11 +81,11 @@ func (m inputModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m inputModel) View() string {
+func (m inputModel) View() tea.View {
 	if m.done {
-		return ""
+		return tea.NewView("")
 	}
-	return m.textInput.View()
+	return tea.NewView(m.textInput.View())
 }
 
 // PromptInput displays an inline prompt and returns user input
@@ -153,13 +154,14 @@ func (m textAreaModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.textarea.SetWidth(msg.Width)
 		return m, nil
-	case tea.KeyMsg:
-		switch msg.Type {
-		case tea.KeyCtrlD:
+	case tea.KeyPressMsg:
+		k := msg.Key()
+		switch {
+		case k.Code == 'd' && k.Mod == tea.ModCtrl:
 			m.value = m.textarea.Value()
 			m.done = true
 			return m, tea.Quit
-		case tea.KeyCtrlC, tea.KeyEsc:
+		case k.Code == tea.KeyEscape || (k.Code == 'c' && k.Mod == tea.ModCtrl):
 			m.done = true
 			return m, tea.Quit
 		}
@@ -169,11 +171,11 @@ func (m textAreaModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m textAreaModel) View() string {
+func (m textAreaModel) View() tea.View {
 	if m.done {
-		return ""
+		return tea.NewView("")
 	}
-	return m.textarea.View() + "\n Ctrl+D to submit | Esc to cancel"
+	return tea.NewView(m.textarea.View() + "\n Ctrl+D to submit | Esc to cancel")
 }
 
 // PromptTextArea displays a multi-line text area and returns user input

@@ -32,17 +32,19 @@ var pushCmd = &cobra.Command{
 			u.PrintFatal("remote path must be a folder", nil)
 		}
 
-		u.PrintInfo("building local tree...")
+		u.PrintRunning("building local tree")
 		localTree, err := drive.BuildLocalTree(ctx, localPath, ignoreList)
 		if err != nil {
 			u.PrintFatal("failed to build local tree", err)
 		}
+		u.ClearLines(1)
 
-		u.PrintInfo("building remote tree...")
+		u.PrintRunning("building remote tree")
 		remoteTree, err := drive.BuildRemoteTree(ctx, folder.Id, "", ignoreList)
 		if err != nil {
 			u.PrintFatal("failed to build remote tree", err)
 		}
+		u.ClearLines(1)
 
 		plan := drive.CompareTrees(localTree, remoteTree)
 

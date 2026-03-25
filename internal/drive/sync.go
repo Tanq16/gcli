@@ -212,7 +212,7 @@ func ExecutePush(ctx context.Context, plan *SyncPlan, localRoot string, remoteFo
 	}
 
 	if len(plan.Creates) > 0 {
-		u.PrintInfo(fmt.Sprintf("uploading %d new files...", len(plan.Creates)))
+		u.PrintRunning(fmt.Sprintf("uploading %d new files", len(plan.Creates)))
 		g, ctx := errgroup.WithContext(ctx)
 		g.SetLimit(concurrency)
 		for _, action := range plan.Creates {
@@ -234,13 +234,15 @@ func ExecutePush(ctx context.Context, plan *SyncPlan, localRoot string, remoteFo
 				return err
 			})
 		}
-		if err := g.Wait(); err != nil {
+		err := g.Wait()
+		u.ClearLines(1)
+		if err != nil {
 			return err
 		}
 	}
 
 	if len(plan.Updates) > 0 {
-		u.PrintInfo(fmt.Sprintf("updating %d changed files...", len(plan.Updates)))
+		u.PrintRunning(fmt.Sprintf("updating %d changed files", len(plan.Updates)))
 		g, ctx := errgroup.WithContext(ctx)
 		g.SetLimit(concurrency)
 		for _, action := range plan.Updates {
@@ -255,13 +257,15 @@ func ExecutePush(ctx context.Context, plan *SyncPlan, localRoot string, remoteFo
 				return err
 			})
 		}
-		if err := g.Wait(); err != nil {
+		err := g.Wait()
+		u.ClearLines(1)
+		if err != nil {
 			return err
 		}
 	}
 
 	if len(plan.Deletes) > 0 {
-		u.PrintInfo(fmt.Sprintf("deleting %d remote files...", len(plan.Deletes)))
+		u.PrintRunning(fmt.Sprintf("deleting %d remote files", len(plan.Deletes)))
 		g, ctx := errgroup.WithContext(ctx)
 		g.SetLimit(concurrency)
 		for _, action := range plan.Deletes {
@@ -274,7 +278,9 @@ func ExecutePush(ctx context.Context, plan *SyncPlan, localRoot string, remoteFo
 				return DeleteFile(action.RemoteID)
 			})
 		}
-		if err := g.Wait(); err != nil {
+		err := g.Wait()
+		u.ClearLines(1)
+		if err != nil {
 			return err
 		}
 	}
@@ -297,7 +303,7 @@ func ExecutePull(ctx context.Context, plan *SyncPlan, remoteFolderID string, loc
 	}
 
 	if len(plan.Creates) > 0 {
-		u.PrintInfo(fmt.Sprintf("downloading %d new files...", len(plan.Creates)))
+		u.PrintRunning(fmt.Sprintf("downloading %d new files", len(plan.Creates)))
 		g, ctx := errgroup.WithContext(ctx)
 		g.SetLimit(concurrency)
 		for _, action := range plan.Creates {
@@ -315,13 +321,15 @@ func ExecutePull(ctx context.Context, plan *SyncPlan, remoteFolderID string, loc
 				return DownloadFile(f, localPath)
 			})
 		}
-		if err := g.Wait(); err != nil {
+		err := g.Wait()
+		u.ClearLines(1)
+		if err != nil {
 			return err
 		}
 	}
 
 	if len(plan.Updates) > 0 {
-		u.PrintInfo(fmt.Sprintf("updating %d changed files...", len(plan.Updates)))
+		u.PrintRunning(fmt.Sprintf("updating %d changed files", len(plan.Updates)))
 		g, ctx := errgroup.WithContext(ctx)
 		g.SetLimit(concurrency)
 		for _, action := range plan.Updates {
@@ -339,13 +347,15 @@ func ExecutePull(ctx context.Context, plan *SyncPlan, remoteFolderID string, loc
 				return DownloadFile(f, localPath)
 			})
 		}
-		if err := g.Wait(); err != nil {
+		err := g.Wait()
+		u.ClearLines(1)
+		if err != nil {
 			return err
 		}
 	}
 
 	if len(plan.Deletes) > 0 {
-		u.PrintInfo(fmt.Sprintf("deleting %d local files...", len(plan.Deletes)))
+		u.PrintRunning(fmt.Sprintf("deleting %d local files", len(plan.Deletes)))
 		g, ctx := errgroup.WithContext(ctx)
 		g.SetLimit(concurrency)
 		for _, action := range plan.Deletes {
@@ -359,7 +369,9 @@ func ExecutePull(ctx context.Context, plan *SyncPlan, remoteFolderID string, loc
 				return os.Remove(localPath)
 			})
 		}
-		if err := g.Wait(); err != nil {
+		err := g.Wait()
+		u.ClearLines(1)
+		if err != nil {
 			return err
 		}
 	}

@@ -33,13 +33,14 @@ var pullCmd = &cobra.Command{
 			u.PrintFatal("remote path must be a folder", nil)
 		}
 
-		u.PrintInfo("building remote tree...")
+		u.PrintRunning("building remote tree")
 		remoteTree, err := drive.BuildRemoteTree(ctx, folder.Id, "", ignoreList)
 		if err != nil {
 			u.PrintFatal("failed to build remote tree", err)
 		}
+		u.ClearLines(1)
 
-		u.PrintInfo("building local tree...")
+		u.PrintRunning("building local tree")
 		localTree, err := drive.BuildLocalTree(context.Background(), localPath, ignoreList)
 		if err != nil {
 			localTree = &drive.FileTree{
@@ -47,6 +48,7 @@ var pullCmd = &cobra.Command{
 				Dirs:  make(map[string]*drive.FileTree),
 			}
 		}
+		u.ClearLines(1)
 
 		plan := drive.CompareTrees(remoteTree, localTree)
 

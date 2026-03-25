@@ -4,15 +4,15 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 	"github.com/rs/zerolog/log"
 )
 
 var (
-	infoStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("12")) // bright blue
-	successStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("10")) // bright green
-	errorStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))  // bright red
-	warnStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("11")) // bright yellow
+	infoStyle    = lipgloss.NewStyle().Foreground(lipgloss.ANSIColor(12)) // bright blue
+	successStyle = lipgloss.NewStyle().Foreground(lipgloss.ANSIColor(10)) // bright green
+	errorStyle   = lipgloss.NewStyle().Foreground(lipgloss.ANSIColor(9))  // bright red
+	warnStyle    = lipgloss.NewStyle().Foreground(lipgloss.ANSIColor(11)) // bright yellow
 )
 
 // PrintInfo prints an info message in blue
@@ -84,6 +84,74 @@ func PrintWarn(msg string, err error) {
 	} else {
 		fmt.Println(warnStyle.Render("! " + msg))
 	}
+}
+
+// PrintRunning prints a transient running indicator (cleared later by ClearLines)
+func PrintRunning(msg string) {
+	if GlobalDebugFlag {
+		log.Info().Str("package", "utils").Msg(msg)
+	} else if GlobalForAIFlag {
+		fmt.Println("[RUNNING] " + msg)
+	} else {
+		fmt.Println(infoStyle.Render("↻ " + msg))
+	}
+}
+
+// PrintIndentedSuccess prints an indented success message
+func PrintIndentedSuccess(msg string) {
+	if GlobalDebugFlag {
+		log.Info().Str("package", "utils").Msg(msg)
+	} else if GlobalForAIFlag {
+		fmt.Println("[OK]   " + msg)
+	} else {
+		fmt.Println(successStyle.Render("  ✓ " + msg))
+	}
+}
+
+// PrintIndentedError prints an indented error message
+func PrintIndentedError(msg string, err error) {
+	if GlobalDebugFlag {
+		if err != nil {
+			log.Error().Str("package", "utils").Err(err).Msg(msg)
+		} else {
+			log.Error().Str("package", "utils").Msg(msg)
+		}
+	} else if GlobalForAIFlag {
+		fmt.Println("[ERROR]   " + msg)
+	} else {
+		fmt.Println(errorStyle.Render("  ✗ " + msg))
+	}
+}
+
+// PrintIndentedWarn prints an indented warning message
+func PrintIndentedWarn(msg string, err error) {
+	if GlobalDebugFlag {
+		if err != nil {
+			log.Warn().Str("package", "utils").Err(err).Msg(msg)
+		} else {
+			log.Warn().Str("package", "utils").Msg(msg)
+		}
+	} else if GlobalForAIFlag {
+		fmt.Println("[WARN]   " + msg)
+	} else {
+		fmt.Println(warnStyle.Render("  ! " + msg))
+	}
+}
+
+// ClearLines moves the cursor up n lines and clears them (human mode only)
+// In AI and debug modes this is a no-op so all output persists
+func ClearLines(n int) {
+	if GlobalDebugFlag || GlobalForAIFlag {
+		return
+	}
+	for range n {
+		fmt.Print("\033[A\033[2K")
+	}
+}
+
+// ClearPreviousLine clears the single previous line (human mode only)
+func ClearPreviousLine() {
+	ClearLines(1)
 }
 
 // PrintGeneric prints plain text without styling

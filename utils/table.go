@@ -4,22 +4,22 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
-	"github.com/charmbracelet/lipgloss/table"
+	"charm.land/lipgloss/v2"
+	"charm.land/lipgloss/v2/table"
 )
 
 var (
 	headerStyle = lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("15")).
+		Foreground(lipgloss.ANSIColor(15)).
 		Padding(0, 1)
 
 	cellStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("7")).
+		Foreground(lipgloss.ANSIColor(7)).
 		Padding(0, 1)
 
 	borderStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("8"))
+		Foreground(lipgloss.ANSIColor(8))
 )
 
 // PrintTable prints a formatted table with headers and rows
