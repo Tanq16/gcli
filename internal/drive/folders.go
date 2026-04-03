@@ -41,6 +41,37 @@ func ListFolder(folderID string) ([]*driveapi.File, error) {
 	return allFiles, nil
 }
 
+// ListShared returns all items in "Shared with me", sorted folders-first then alphabetical
+func ListShared() ([]*driveapi.File, error) {
+	q := "sharedWithMe = true and trashed = false"
+
+	var allFiles []*driveapi.File
+	err := Service.Files.List().
+		Q(q).
+		PageSize(1000).
+		Fields(ListFields()).
+		SupportsAllDrives(true).
+		IncludeItemsFromAllDrives(true).
+		Pages(context.Background(), func(page *driveapi.FileList) error {
+			allFiles = append(allFiles, page.Files...)
+			return nil
+		})
+	if err != nil {
+		return nil, gapi.HandleError(err)
+	}
+
+	sort.Slice(allFiles, func(i, j int) bool {
+		iFolder := IsFolder(allFiles[i])
+		jFolder := IsFolder(allFiles[j])
+		if iFolder != jFolder {
+			return iFolder
+		}
+		return strings.ToLower(allFiles[i].Name) < strings.ToLower(allFiles[j].Name)
+	})
+
+	return allFiles, nil
+}
+
 // CreateFolder creates a single folder with the given name under parentID
 func CreateFolder(name string, parentID string) (*driveapi.File, error) {
 	f := &driveapi.File{

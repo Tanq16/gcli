@@ -32,14 +32,23 @@ func (c *PathCache) set(path string, id string) {
 	c.cache[path] = id
 }
 
-// ResolvePath walks a Drive path segment-by-segment and returns the final file
+// ResolvePath walks a Drive path segment-by-segment and returns the final file.
+// When SharedMode is true, the first segment resolves from "Shared with me" instead of "My Drive" root.
 func ResolvePath(path string) (*driveapi.File, error) {
 	path = strings.Trim(path, "/")
 	if path == "" {
+		if SharedMode {
+			return nil, fmt.Errorf("shared root is virtual — use 'list --shared' or specify a path")
+		}
 		return Service.Files.Get("root").Fields(FileFields()).SupportsAllDrives(true).Do()
 	}
 
-	if id, ok := pathCache.get(path); ok {
+	cachePrefix := ""
+	if SharedMode {
+		cachePrefix = "shared:"
+	}
+
+	if id, ok := pathCache.get(cachePrefix + path); ok {
 		f, err := Service.Files.Get(id).Fields(FileFields()).SupportsAllDrives(true).Do()
 		if err == nil {
 			return f, nil
@@ -57,13 +66,18 @@ func ResolvePath(path string) (*driveapi.File, error) {
 			currentPath = currentPath + "/" + part
 		}
 
-		if id, ok := pathCache.get(currentPath); ok {
+		if id, ok := pathCache.get(cachePrefix + currentPath); ok {
 			parentID = id
 			continue
 		}
 
 		escapedPart := strings.ReplaceAll(part, "'", "\\'")
-		q := fmt.Sprintf("name = '%s' and '%s' in parents and trashed = false", escapedPart, parentID)
+		var q string
+		if i == 0 && SharedMode {
+			q = fmt.Sprintf("sharedWithMe = true and name = '%s' and trashed = false", escapedPart)
+		} else {
+			q = fmt.Sprintf("name = '%s' and '%s' in parents and trashed = false", escapedPart, parentID)
+		}
 
 		if i < len(parts)-1 {
 			q += " and mimeType = 'application/vnd.google-apps.folder'"
@@ -82,18 +96,20 @@ func ResolvePath(path string) (*driveapi.File, error) {
 
 		if len(result.Files) == 0 {
 			parentName := "root"
-			if i > 0 {
+			if i == 0 && SharedMode {
+				parentName = "shared with me"
+			} else if i > 0 {
 				parentName = parts[i-1]
 			}
 			return nil, fmt.Errorf("'%s' not found in '%s'", part, parentName)
 		}
 
 		if len(result.Files) > 1 && i == len(parts)-1 {
-			return nil, fmt.Errorf("multiple items named '%s' in folder — use --id to specify", part)
+			return nil, fmt.Errorf("multiple items named '%s' — use --id to specify", part)
 		}
 
 		parentID = result.Files[0].Id
-		pathCache.set(currentPath, parentID)
+		pathCache.set(cachePrefix+currentPath, parentID)
 
 		if i == len(parts)-1 {
 			return result.Files[0], nil
@@ -121,6 +137,9 @@ func ResolveParent(path string) (string, string, error) {
 	parts := strings.Split(path, "/")
 
 	if len(parts) == 1 {
+		if SharedMode {
+			return "", "", fmt.Errorf("cannot use shared root as parent — specify a path within a shared folder")
+		}
 		return "root", parts[0], nil
 	}
 

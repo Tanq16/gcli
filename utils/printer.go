@@ -3,6 +3,7 @@ package utils
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"charm.land/lipgloss/v2"
 	"github.com/rs/zerolog/log"
@@ -136,6 +137,23 @@ func PrintIndentedWarn(msg string, err error) {
 	} else {
 		fmt.Println(warnStyle.Render("  ! " + msg))
 	}
+}
+
+// PrintProgress prints a braille-dot progress bar (meant to be called from a goroutine ticker)
+func PrintProgress(label string, percent int) {
+	if GlobalDebugFlag {
+		log.Info().Str("package", "utils").Int("percent", percent).Msg(label)
+		return
+	}
+	if GlobalForAIFlag {
+		fmt.Printf("[PROGRESS] %s: %d%%\n", label, percent)
+		return
+	}
+	const barWidth = 10
+	filled := barWidth * percent / 100
+	empty := barWidth - filled
+	bar := strings.Repeat("⣿", filled) + strings.Repeat("⣀", empty)
+	fmt.Println(infoStyle.Render(fmt.Sprintf("  ↻ %s: %s %d%%", label, bar, percent)))
 }
 
 // ClearLines moves the cursor up n lines and clears them (human mode only)

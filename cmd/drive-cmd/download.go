@@ -33,10 +33,13 @@ var downloadCmd = &cobra.Command{
 			}
 			u.PrintSuccess("folder downloaded to " + localPath)
 		} else {
+			u.PrintRunning("downloading...")
 			localPath = filepath.Clean(localPath)
 			if err := drive.DownloadFile(f, localPath); err != nil {
+				u.ClearLines(1)
 				u.PrintFatal("download failed", err)
 			}
+			u.ClearLines(1)
 			u.PrintSuccess("downloaded " + f.Name)
 		}
 	},

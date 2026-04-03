@@ -20,6 +20,7 @@ CLI tool for Google Drive, Gmail, and Calendar. Manage files, threads, and event
 | Drive | `mkdir`, `move`, `copy`, `delete` | File and folder management |
 | Drive | `sync push`, `sync pull` | Bidirectional directory sync with concurrency |
 | Drive | `permissions list/create/delete` | Manage file sharing permissions |
+| Drive | `--shared` flag | Navigate and operate on "Shared with me" items |
 | Mail | `list`, `get`, `search` | List, view, and search Gmail threads |
 | Mail | `send`, `reply`, `forward` | Compose, reply, and forward with attachments and signatures |
 | Mail | `mark read/unread/star/unstar/archive/trash/spam` | Thread state management |
@@ -76,6 +77,12 @@ gcli drive sync pull /Documents/remote-dir ./local-dir
 
 gcli drive permissions list /Documents/shared-file.pdf
 gcli drive permissions create /Documents/file.pdf --type user --role reader --email user@example.com
+
+# Shared with me
+gcli drive list --shared                         # List all shared items
+gcli drive list --shared /ProjectX               # List contents of shared folder
+gcli drive download --shared /ProjectX/file.pdf ./
+gcli drive upload ./local.txt --shared /ProjectX/
 ```
 
 ### Mail
@@ -118,6 +125,7 @@ gcli cal delete <event-id> --notify
 ## Tips and Notes
 
 - All drive commands accept `--id` flag to use Drive file IDs directly instead of paths
+- Use `--shared` (`-s`) on any drive command to resolve paths from "Shared with me" instead of My Drive
 - Use `--debug` for structured log output with full error details
 - Use `--for-ai` for plain text output suitable for piping to other tools
 - Gmail operates on threads (not individual messages), matching the Gmail UI

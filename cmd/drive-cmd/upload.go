@@ -40,10 +40,13 @@ var uploadCmd = &cobra.Command{
 			}
 			u.PrintSuccess("folder uploaded successfully")
 		} else {
+			u.PrintRunning("uploading...")
 			uploaded, err := drive.UploadFile(localPath, parent.Id)
 			if err != nil {
+				u.ClearLines(1)
 				u.PrintFatal("upload failed", err)
 			}
+			u.ClearLines(1)
 			u.PrintSuccess("uploaded " + uploaded.Name + " (" + uploaded.Id + ")")
 		}
 	},

@@ -5,7 +5,10 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sync/atomic"
+	"time"
 
+	"github.com/rs/zerolog/log"
 	"github.com/tanq16/gcli/internal/gapi"
 	u "github.com/tanq16/gcli/utils"
 	driveapi "google.golang.org/api/drive/v3"
@@ -29,7 +32,7 @@ func UploadFile(localPath string, parentID string) (*driveapi.File, error) {
 		Media(f, googleapi.ChunkSize(8*1024*1024)).
 		ProgressUpdater(func(current, total int64) {
 			if total > 0 {
-				u.PrintInfo(fmt.Sprintf("uploading %s: %.1f%%", meta.Name, float64(current)/float64(total)*100))
+				log.Debug().Str("file", meta.Name).Str("progress", fmt.Sprintf("%.1f%%", float64(current)/float64(total)*100)).Msg("uploading")
 			}
 		}).
 		Fields(FileFields()).
@@ -53,7 +56,7 @@ func UpdateFile(fileID string, localPath string) (*driveapi.File, error) {
 		Media(f, googleapi.ChunkSize(8*1024*1024)).
 		ProgressUpdater(func(current, total int64) {
 			if total > 0 {
-				u.PrintInfo(fmt.Sprintf("updating %s: %.1f%%", filepath.Base(localPath), float64(current)/float64(total)*100))
+				log.Debug().Str("file", filepath.Base(localPath)).Str("progress", fmt.Sprintf("%.1f%%", float64(current)/float64(total)*100)).Msg("updating")
 			}
 		}).
 		Fields(FileFields()).
@@ -72,8 +75,9 @@ func UploadFolder(localPath string, parentID string) error {
 		return fmt.Errorf("cannot resolve path: %w", err)
 	}
 
+	// Phase 1: scan files
+	u.PrintRunning("scanning files...")
 	folderIDMap := map[string]string{localPath: parentID}
-	fileCount := 0
 	totalFiles := 0
 
 	filepath.WalkDir(localPath, func(path string, d fs.DirEntry, err error) error {
@@ -82,6 +86,35 @@ func UploadFolder(localPath string, parentID string) error {
 		}
 		return nil
 	})
+	u.ClearLines(1)
+
+	if totalFiles == 0 {
+		return nil
+	}
+
+	// Phase 2: upload with progress indicator
+	var completed atomic.Int32
+	done := make(chan struct{})
+	var printed atomic.Bool
+	go func() {
+		ticker := time.NewTicker(1 * time.Second)
+		defer ticker.Stop()
+		firstTick := true
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				if !firstTick {
+					u.ClearPreviousLine()
+				}
+				firstTick = false
+				printed.Store(true)
+				pct := int(completed.Load()) * 100 / totalFiles
+				u.PrintProgress("uploading", pct)
+			}
+		}
+	}()
 
 	err = filepath.WalkDir(localPath, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -106,11 +139,18 @@ func UploadFolder(localPath string, parentID string) error {
 			return nil
 		}
 
-		fileCount++
-		u.PrintInfo(fmt.Sprintf("uploading %d/%d: %s", fileCount, totalFiles, d.Name()))
-		_, err = UploadFile(path, pid)
-		return err
+		log.Debug().Int("count", int(completed.Load())+1).Int("total", totalFiles).Str("file", d.Name()).Msg("uploading")
+		_, uploadErr := UploadFile(path, pid)
+		if uploadErr == nil {
+			completed.Add(1)
+		}
+		return uploadErr
 	})
+
+	close(done)
+	if printed.Load() {
+		u.ClearPreviousLine()
+	}
 
 	return err
 }

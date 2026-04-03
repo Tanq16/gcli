@@ -14,6 +14,9 @@ import (
 // Service is the authenticated Drive service, set during PersistentPreRunE
 var Service *driveapi.Service
 
+// SharedMode enables resolution from "Shared with me" instead of "My Drive"
+var SharedMode bool
+
 // Init creates a Drive service from an authenticated HTTP client and stores it
 func Init(client *http.Client) error {
 	srv, err := driveapi.NewService(context.Background(), option.WithHTTPClient(client))

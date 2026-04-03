@@ -7,8 +7,11 @@ import (
 	"github.com/tanq16/gcli/internal/drive"
 )
 
+var sharedFlag bool
+
 func init() {
 	DriveCmd.AddCommand(syncCmd.SyncCmd)
+	DriveCmd.PersistentFlags().BoolVarP(&sharedFlag, "shared", "s", false, "Resolve paths from 'Shared with me' instead of My Drive")
 }
 
 // DriveCmd is the parent command for all Google Drive operations
@@ -20,6 +23,10 @@ var DriveCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		return drive.Init(client)
+		if err := drive.Init(client); err != nil {
+			return err
+		}
+		drive.SharedMode = sharedFlag
+		return nil
 	},
 }

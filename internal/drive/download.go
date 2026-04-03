@@ -6,7 +6,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
+	"time"
 
+	"github.com/rs/zerolog/log"
 	"github.com/tanq16/gcli/internal/gapi"
 	u "github.com/tanq16/gcli/utils"
 	driveapi "google.golang.org/api/drive/v3"
@@ -35,7 +38,7 @@ func DownloadFile(file *driveapi.File, localPath string) error {
 		return fmt.Errorf("download failed: %w", err)
 	}
 
-	u.PrintInfo(fmt.Sprintf("downloaded %s (%s)", file.Name, u.FormatSize(written)))
+	log.Debug().Str("file", file.Name).Str("size", fmt.Sprintf("%d", written)).Msg("downloaded")
 	return nil
 }
 
@@ -65,28 +68,31 @@ func ExportFile(file *driveapi.File, localPath string) error {
 		return fmt.Errorf("export failed: %w", err)
 	}
 
-	u.PrintInfo(fmt.Sprintf("exported %s (%s)", filepath.Base(localPath), u.FormatSize(written)))
+	log.Debug().Str("file", filepath.Base(localPath)).Str("size", fmt.Sprintf("%d", written)).Msg("exported")
 	return nil
 }
 
-// DownloadFolder recursively downloads a Drive folder to a local path
-func DownloadFolder(folderID string, localPath string) error {
-	if err := os.MkdirAll(localPath, 0755); err != nil {
-		return fmt.Errorf("cannot create directory %s: %w", localPath, err)
-	}
+type downloadItem struct {
+	file      *driveapi.File
+	localPath string
+}
 
+func collectDownloadItems(folderID string, localPath string) ([]downloadItem, error) {
 	files, err := ListFolder(folderID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
+	var items []downloadItem
 	for _, f := range files {
 		itemPath := filepath.Join(localPath, f.Name)
 
 		if IsFolder(f) {
-			if err := DownloadFolder(f.Id, itemPath); err != nil {
-				u.PrintError("failed to download folder "+f.Name, err)
+			subItems, err := collectDownloadItems(f.Id, itemPath)
+			if err != nil {
+				return nil, err
 			}
+			items = append(items, subItems...)
 			continue
 		}
 
@@ -94,9 +100,66 @@ func DownloadFolder(folderID string, localPath string) error {
 			itemPath = filepath.Join(localPath, f.Name+ExportExtension(f.MimeType))
 		}
 
-		if err := DownloadFile(f, itemPath); err != nil {
-			u.PrintError("failed to download "+f.Name, err)
+		items = append(items, downloadItem{file: f, localPath: itemPath})
+	}
+	return items, nil
+}
+
+// DownloadFolder recursively downloads a Drive folder to a local path
+func DownloadFolder(folderID string, localPath string) error {
+	// Phase 1: scan remote
+	u.PrintRunning("scanning remote folder...")
+	items, err := collectDownloadItems(folderID, localPath)
+	if err != nil {
+		u.ClearLines(1)
+		return err
+	}
+	u.ClearLines(1)
+
+	if len(items) == 0 {
+		return nil
+	}
+
+	// Phase 2: download with progress indicator
+	total := len(items)
+	var completed atomic.Int32
+	done := make(chan struct{})
+	var printed atomic.Bool
+	go func() {
+		ticker := time.NewTicker(1 * time.Second)
+		defer ticker.Stop()
+		firstTick := true
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				if !firstTick {
+					u.ClearPreviousLine()
+				}
+				firstTick = false
+				printed.Store(true)
+				pct := int(completed.Load()) * 100 / total
+				u.PrintProgress("downloading", pct)
+			}
 		}
+	}()
+
+	for _, item := range items {
+		if err := os.MkdirAll(filepath.Dir(item.localPath), 0755); err != nil {
+			log.Debug().Err(err).Str("path", item.localPath).Msg("failed to create directory")
+			completed.Add(1)
+			continue
+		}
+		if err := DownloadFile(item.file, item.localPath); err != nil {
+			log.Debug().Err(err).Str("file", item.file.Name).Msg("failed to download")
+		}
+		completed.Add(1)
+	}
+
+	close(done)
+	if printed.Load() {
+		u.ClearPreviousLine()
 	}
 
 	return nil

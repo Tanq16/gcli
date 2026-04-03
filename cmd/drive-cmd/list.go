@@ -24,22 +24,34 @@ var listCmd = &cobra.Command{
 			path = args[0]
 		}
 
-		folder, err := drive.ResolveOrID(path, listFlags.id)
-		if err != nil {
-			u.PrintFatal("failed to resolve path", err)
-		}
+		var files []*driveapi.File
 
-		if !drive.IsFolder(folder) {
-			u.PrintFatal("not a folder: "+folder.Name, nil)
-		}
-
-		files, err := drive.ListFolder(folder.Id)
-		if err != nil {
-			u.PrintFatal("failed to list folder", err)
+		if drive.SharedMode && strings.Trim(path, "/") == "" && listFlags.id == "" {
+			var err error
+			files, err = drive.ListShared()
+			if err != nil {
+				u.PrintFatal("failed to list shared items", err)
+			}
+		} else {
+			folder, err := drive.ResolveOrID(path, listFlags.id)
+			if err != nil {
+				u.PrintFatal("failed to resolve path", err)
+			}
+			if !drive.IsFolder(folder) {
+				u.PrintFatal("not a folder: "+folder.Name, nil)
+			}
+			files, err = drive.ListFolder(folder.Id)
+			if err != nil {
+				u.PrintFatal("failed to list folder", err)
+			}
 		}
 
 		if len(files) == 0 {
-			u.PrintInfo("folder is empty")
+			if drive.SharedMode {
+				u.PrintInfo("no shared items found")
+			} else {
+				u.PrintInfo("folder is empty")
+			}
 			return
 		}
 
