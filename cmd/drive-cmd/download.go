@@ -28,7 +28,7 @@ var downloadCmd = &cobra.Command{
 		}
 
 		if drive.IsFolder(f) {
-			if err := drive.DownloadFolder(f.Id, localPath); err != nil {
+			if err := drive.DownloadFolder(cmd.Context(), f.Id, localPath); err != nil {
 				u.PrintFatal("folder download failed", err)
 			}
 			u.PrintSuccess("folder downloaded to " + localPath)

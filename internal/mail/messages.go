@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/tanq16/gcli/internal/gapi"
@@ -78,7 +77,6 @@ func GetLastMessageInThread(threadID string) (*gmail.Message, error) {
 
 func fetchThreadSummaries(ctx context.Context, threads []*gmail.Thread) ([]ThreadSummary, error) {
 	summaries := make([]ThreadSummary, len(threads))
-	var mu sync.Mutex
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(10)
 
@@ -117,7 +115,6 @@ func fetchThreadSummaries(ctx context.Context, threads []*gmail.Thread) ([]Threa
 			subject := extractHeader(last, "Subject")
 			dateStr := extractHeader(last, "Date")
 
-			mu.Lock()
 			summaries[i] = ThreadSummary{
 				ID:           thread.Id,
 				From:         formatFrom(from),
@@ -127,7 +124,6 @@ func fetchThreadSummaries(ctx context.Context, threads []*gmail.Thread) ([]Threa
 				Unread:       unread,
 				MessageCount: len(msgs),
 			}
-			mu.Unlock()
 			return nil
 		})
 	}

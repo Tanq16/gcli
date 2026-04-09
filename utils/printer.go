@@ -16,7 +16,6 @@ var (
 	warnStyle    = lipgloss.NewStyle().Foreground(lipgloss.ANSIColor(11)) // bright yellow
 )
 
-// PrintInfo prints an info message in blue
 func PrintInfo(msg string) {
 	if GlobalDebugFlag {
 		log.Info().Str("package", "utils").Msg(msg)
@@ -27,7 +26,6 @@ func PrintInfo(msg string) {
 	}
 }
 
-// PrintSuccess prints a success message in green
 func PrintSuccess(msg string) {
 	if GlobalDebugFlag {
 		log.Info().Str("package", "utils").Msg(msg)
@@ -71,8 +69,6 @@ func PrintFatal(msg string, err error) {
 	os.Exit(1)
 }
 
-// PrintWarn prints a warning message in yellow
-// Only --debug shows the underlying error; human and AI modes show only the friendly message
 func PrintWarn(msg string, err error) {
 	if GlobalDebugFlag {
 		if err != nil {
@@ -87,7 +83,6 @@ func PrintWarn(msg string, err error) {
 	}
 }
 
-// PrintRunning prints a transient running indicator (cleared later by ClearLines)
 func PrintRunning(msg string) {
 	if GlobalDebugFlag {
 		log.Info().Str("package", "utils").Msg(msg)
@@ -98,7 +93,16 @@ func PrintRunning(msg string) {
 	}
 }
 
-// PrintIndentedSuccess prints an indented success message
+func PrintIndentedRunning(msg string) {
+	if GlobalDebugFlag {
+		log.Info().Str("package", "utils").Msg(msg)
+	} else if GlobalForAIFlag {
+		fmt.Println("[RUNNING]   " + msg)
+	} else {
+		fmt.Println(infoStyle.Render("  ↻ " + msg))
+	}
+}
+
 func PrintIndentedSuccess(msg string) {
 	if GlobalDebugFlag {
 		log.Info().Str("package", "utils").Msg(msg)
@@ -109,7 +113,6 @@ func PrintIndentedSuccess(msg string) {
 	}
 }
 
-// PrintIndentedError prints an indented error message
 func PrintIndentedError(msg string, err error) {
 	if GlobalDebugFlag {
 		if err != nil {
@@ -124,7 +127,6 @@ func PrintIndentedError(msg string, err error) {
 	}
 }
 
-// PrintIndentedWarn prints an indented warning message
 func PrintIndentedWarn(msg string, err error) {
 	if GlobalDebugFlag {
 		if err != nil {
@@ -139,7 +141,6 @@ func PrintIndentedWarn(msg string, err error) {
 	}
 }
 
-// PrintProgress prints a braille-dot progress bar (meant to be called from a goroutine ticker)
 func PrintProgress(label string, percent int) {
 	if GlobalDebugFlag {
 		log.Info().Str("package", "utils").Int("percent", percent).Msg(label)
@@ -156,8 +157,6 @@ func PrintProgress(label string, percent int) {
 	fmt.Println(infoStyle.Render(fmt.Sprintf("  ↻ %s: %s %d%%", label, bar, percent)))
 }
 
-// ClearLines moves the cursor up n lines and clears them (human mode only)
-// In AI and debug modes this is a no-op so all output persists
 func ClearLines(n int) {
 	if GlobalDebugFlag || GlobalForAIFlag {
 		return
@@ -167,17 +166,14 @@ func ClearLines(n int) {
 	}
 }
 
-// ClearPreviousLine clears the single previous line (human mode only)
 func ClearPreviousLine() {
 	ClearLines(1)
 }
 
-// PrintGeneric prints plain text without styling
 func PrintGeneric(msg string) {
 	fmt.Println(msg)
 }
 
-// FormatSize converts bytes to human-readable size
 func FormatSize(bytes int64) string {
 	const unit = 1024
 	if bytes < unit {

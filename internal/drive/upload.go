@@ -1,6 +1,7 @@
 package drive
 
 import (
+	"context"
 	"fmt"
 	"io/fs"
 	"os"
@@ -69,7 +70,7 @@ func UpdateFile(fileID string, localPath string) (*driveapi.File, error) {
 }
 
 // UploadFolder recursively uploads a local directory to Drive
-func UploadFolder(localPath string, parentID string) error {
+func UploadFolder(ctx context.Context, localPath string, parentID string) error {
 	localPath, err := filepath.Abs(localPath)
 	if err != nil {
 		return fmt.Errorf("cannot resolve path: %w", err)
@@ -119,6 +120,12 @@ func UploadFolder(localPath string, parentID string) error {
 	err = filepath.WalkDir(localPath, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
+		}
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
 		}
 
 		parentLocal := filepath.Dir(path)

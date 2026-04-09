@@ -35,7 +35,7 @@ var uploadCmd = &cobra.Command{
 		}
 
 		if info.IsDir() {
-			if err := drive.UploadFolder(localPath, parent.Id); err != nil {
+			if err := drive.UploadFolder(cmd.Context(), localPath, parent.Id); err != nil {
 				u.PrintFatal("folder upload failed", err)
 			}
 			u.PrintSuccess("folder uploaded successfully")

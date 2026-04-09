@@ -2,6 +2,8 @@ package syncCmd
 
 import (
 	"fmt"
+	"sync/atomic"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/tanq16/gcli/internal/drive"
@@ -57,7 +59,38 @@ var pushCmd = &cobra.Command{
 		u.PrintInfo(fmt.Sprintf("sync plan: %d creates, %d updates, %d deletes",
 			len(plan.Creates), len(plan.Updates), len(plan.Deletes)))
 
-		if err := drive.ExecutePush(ctx, plan, localPath, folder.Id, pushFlags.concurrency); err != nil {
+		u.PrintRunning(fmt.Sprintf("syncing %d items", total))
+		progress := &drive.SyncProgress{}
+		done := make(chan struct{})
+		var printed atomic.Bool
+		go func() {
+			ticker := time.NewTicker(1 * time.Second)
+			defer ticker.Stop()
+			firstTick := true
+			for {
+				select {
+				case <-done:
+					return
+				case <-ticker.C:
+					if !firstTick {
+						u.ClearPreviousLine()
+					}
+					firstTick = false
+					printed.Store(true)
+					pct := int(progress.Completed.Load()) * 100 / total
+					u.PrintProgress("pushing", pct)
+				}
+			}
+		}()
+
+		err = drive.ExecutePush(ctx, plan, localPath, folder.Id, pushFlags.concurrency, progress)
+		close(done)
+		if printed.Load() {
+			u.ClearPreviousLine()
+		}
+		u.ClearLines(1)
+
+		if err != nil {
 			u.PrintFatal("sync push failed", err)
 		}
 

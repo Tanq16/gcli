@@ -10,8 +10,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 
-	u "github.com/tanq16/gcli/utils"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -42,6 +42,11 @@ type SyncAction struct {
 	LocalPath string
 	RemoteID  string
 	Type      string // "file" or "folder"
+}
+
+// SyncProgress tracks completed operations for progress reporting
+type SyncProgress struct {
+	Completed atomic.Int32
 }
 
 // BuildLocalTree walks a local directory and builds a FileTree
@@ -197,7 +202,7 @@ func CompareTrees(source, target *FileTree) *SyncPlan {
 }
 
 // ExecutePush executes a sync plan pushing local files to Drive
-func ExecutePush(ctx context.Context, plan *SyncPlan, localRoot string, remoteFolderID string, concurrency int) error {
+func ExecutePush(ctx context.Context, plan *SyncPlan, localRoot string, remoteFolderID string, concurrency int, progress *SyncProgress) error {
 	localRoot, _ = filepath.Abs(localRoot)
 
 	createdDirs := make(map[string]string)
@@ -212,7 +217,6 @@ func ExecutePush(ctx context.Context, plan *SyncPlan, localRoot string, remoteFo
 	}
 
 	if len(plan.Creates) > 0 {
-		u.PrintRunning(fmt.Sprintf("uploading %d new files", len(plan.Creates)))
 		g, ctx := errgroup.WithContext(ctx)
 		g.SetLimit(concurrency)
 		for _, action := range plan.Creates {
@@ -231,18 +235,18 @@ func ExecutePush(ctx context.Context, plan *SyncPlan, localRoot string, remoteFo
 				}
 				localPath := filepath.Join(localRoot, action.RelPath)
 				_, err := UploadFile(localPath, parentID)
+				if err == nil {
+					progress.Completed.Add(1)
+				}
 				return err
 			})
 		}
-		err := g.Wait()
-		u.ClearLines(1)
-		if err != nil {
+		if err := g.Wait(); err != nil {
 			return err
 		}
 	}
 
 	if len(plan.Updates) > 0 {
-		u.PrintRunning(fmt.Sprintf("updating %d changed files", len(plan.Updates)))
 		g, ctx := errgroup.WithContext(ctx)
 		g.SetLimit(concurrency)
 		for _, action := range plan.Updates {
@@ -254,18 +258,18 @@ func ExecutePush(ctx context.Context, plan *SyncPlan, localRoot string, remoteFo
 				}
 				localPath := filepath.Join(localRoot, action.RelPath)
 				_, err := UpdateFile(action.RemoteID, localPath)
+				if err == nil {
+					progress.Completed.Add(1)
+				}
 				return err
 			})
 		}
-		err := g.Wait()
-		u.ClearLines(1)
-		if err != nil {
+		if err := g.Wait(); err != nil {
 			return err
 		}
 	}
 
 	if len(plan.Deletes) > 0 {
-		u.PrintRunning(fmt.Sprintf("deleting %d remote files", len(plan.Deletes)))
 		g, ctx := errgroup.WithContext(ctx)
 		g.SetLimit(concurrency)
 		for _, action := range plan.Deletes {
@@ -275,12 +279,14 @@ func ExecutePush(ctx context.Context, plan *SyncPlan, localRoot string, remoteFo
 					return ctx.Err()
 				default:
 				}
-				return DeleteFile(action.RemoteID)
+				err := DeleteFile(action.RemoteID)
+				if err == nil {
+					progress.Completed.Add(1)
+				}
+				return err
 			})
 		}
-		err := g.Wait()
-		u.ClearLines(1)
-		if err != nil {
+		if err := g.Wait(); err != nil {
 			return err
 		}
 	}
@@ -289,7 +295,7 @@ func ExecutePush(ctx context.Context, plan *SyncPlan, localRoot string, remoteFo
 }
 
 // ExecutePull executes a sync plan pulling remote files to local
-func ExecutePull(ctx context.Context, plan *SyncPlan, remoteFolderID string, localRoot string, concurrency int) error {
+func ExecutePull(ctx context.Context, plan *SyncPlan, remoteFolderID string, localRoot string, concurrency int, progress *SyncProgress) error {
 	localRoot, _ = filepath.Abs(localRoot)
 
 	for _, action := range plan.Creates {
@@ -303,7 +309,6 @@ func ExecutePull(ctx context.Context, plan *SyncPlan, remoteFolderID string, loc
 	}
 
 	if len(plan.Creates) > 0 {
-		u.PrintRunning(fmt.Sprintf("downloading %d new files", len(plan.Creates)))
 		g, ctx := errgroup.WithContext(ctx)
 		g.SetLimit(concurrency)
 		for _, action := range plan.Creates {
@@ -318,18 +323,19 @@ func ExecutePull(ctx context.Context, plan *SyncPlan, remoteFolderID string, loc
 					return err
 				}
 				localPath := filepath.Join(localRoot, action.RelPath)
-				return DownloadFile(f, localPath)
+				err = DownloadFile(f, localPath)
+				if err == nil {
+					progress.Completed.Add(1)
+				}
+				return err
 			})
 		}
-		err := g.Wait()
-		u.ClearLines(1)
-		if err != nil {
+		if err := g.Wait(); err != nil {
 			return err
 		}
 	}
 
 	if len(plan.Updates) > 0 {
-		u.PrintRunning(fmt.Sprintf("updating %d changed files", len(plan.Updates)))
 		g, ctx := errgroup.WithContext(ctx)
 		g.SetLimit(concurrency)
 		for _, action := range plan.Updates {
@@ -344,18 +350,19 @@ func ExecutePull(ctx context.Context, plan *SyncPlan, remoteFolderID string, loc
 					return err
 				}
 				localPath := filepath.Join(localRoot, action.RelPath)
-				return DownloadFile(f, localPath)
+				err = DownloadFile(f, localPath)
+				if err == nil {
+					progress.Completed.Add(1)
+				}
+				return err
 			})
 		}
-		err := g.Wait()
-		u.ClearLines(1)
-		if err != nil {
+		if err := g.Wait(); err != nil {
 			return err
 		}
 	}
 
 	if len(plan.Deletes) > 0 {
-		u.PrintRunning(fmt.Sprintf("deleting %d local files", len(plan.Deletes)))
 		g, ctx := errgroup.WithContext(ctx)
 		g.SetLimit(concurrency)
 		for _, action := range plan.Deletes {
@@ -366,12 +373,14 @@ func ExecutePull(ctx context.Context, plan *SyncPlan, remoteFolderID string, loc
 				default:
 				}
 				localPath := filepath.Join(localRoot, action.RelPath)
-				return os.Remove(localPath)
+				err := os.Remove(localPath)
+				if err == nil {
+					progress.Completed.Add(1)
+				}
+				return err
 			})
 		}
-		err := g.Wait()
-		u.ClearLines(1)
-		if err != nil {
+		if err := g.Wait(); err != nil {
 			return err
 		}
 	}

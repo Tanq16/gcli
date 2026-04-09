@@ -1,6 +1,7 @@
 package drive
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -106,7 +107,7 @@ func collectDownloadItems(folderID string, localPath string) ([]downloadItem, er
 }
 
 // DownloadFolder recursively downloads a Drive folder to a local path
-func DownloadFolder(folderID string, localPath string) error {
+func DownloadFolder(ctx context.Context, folderID string, localPath string) error {
 	// Phase 1: scan remote
 	u.PrintRunning("scanning remote folder...")
 	items, err := collectDownloadItems(folderID, localPath)
@@ -146,6 +147,15 @@ func DownloadFolder(folderID string, localPath string) error {
 	}()
 
 	for _, item := range items {
+		select {
+		case <-ctx.Done():
+			close(done)
+			if printed.Load() {
+				u.ClearPreviousLine()
+			}
+			return ctx.Err()
+		default:
+		}
 		if err := os.MkdirAll(filepath.Dir(item.localPath), 0755); err != nil {
 			log.Debug().Err(err).Str("path", item.localPath).Msg("failed to create directory")
 			completed.Add(1)
