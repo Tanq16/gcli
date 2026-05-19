@@ -112,11 +112,10 @@ func BuildLocalTree(ctx context.Context, rootPath string, ignore []string) (*Fil
 	return tree, err
 }
 
-// BuildRemoteTree recursively crawls a Drive folder and builds a FileTree
-func BuildRemoteTree(ctx context.Context, folderID string, basePath string, ignore []string) (*FileTree, error) {
+func BuildRemoteTree(ctx context.Context, folderID string, basePath string, ignore []string, localHint *FileTree) (*FileTree, []SyncAction, error) {
 	select {
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return nil, nil, ctx.Err()
 	default:
 	}
 
@@ -124,10 +123,11 @@ func BuildRemoteTree(ctx context.Context, folderID string, basePath string, igno
 		Files: make(map[string]FileInfo),
 		Dirs:  make(map[string]*FileTree),
 	}
+	var orphans []SyncAction
 
 	files, err := ListFolder(folderID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	for _, f := range files {
@@ -141,14 +141,28 @@ func BuildRemoteTree(ctx context.Context, folderID string, basePath string, igno
 		}
 
 		if IsFolder(f) {
-			subtree, err := BuildRemoteTree(ctx, f.Id, relPath, ignore)
+			var childHint *FileTree
+			if localHint != nil {
+				sub, ok := localHint.Dirs[f.Name]
+				if !ok {
+					orphans = append(orphans, SyncAction{
+						RelPath:  relPath,
+						RemoteID: f.Id,
+						Type:     "folder",
+					})
+					continue
+				}
+				childHint = sub
+			}
+			subtree, subOrphans, err := BuildRemoteTree(ctx, f.Id, relPath, ignore, childHint)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			tree.Dirs[f.Name] = subtree
 			for k, v := range subtree.Files {
 				tree.Files[k] = v
 			}
+			orphans = append(orphans, subOrphans...)
 			continue
 		}
 
@@ -164,7 +178,7 @@ func BuildRemoteTree(ctx context.Context, folderID string, basePath string, igno
 		}
 	}
 
-	return tree, nil
+	return tree, orphans, nil
 }
 
 // CompareTrees compares source and target trees and produces a SyncPlan

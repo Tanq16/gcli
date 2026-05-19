@@ -36,7 +36,7 @@ var pullCmd = &cobra.Command{
 		}
 
 		u.PrintRunning("building remote tree")
-		remoteTree, err := drive.BuildRemoteTree(ctx, folder.Id, "", ignoreList)
+		remoteTree, _, err := drive.BuildRemoteTree(ctx, folder.Id, "", ignoreList, nil)
 		if err != nil {
 			u.PrintFatal("failed to build remote tree", err)
 		}

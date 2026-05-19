@@ -42,13 +42,14 @@ var pushCmd = &cobra.Command{
 		u.ClearLines(1)
 
 		u.PrintRunning("building remote tree")
-		remoteTree, err := drive.BuildRemoteTree(ctx, folder.Id, "", ignoreList)
+		remoteTree, orphanFolders, err := drive.BuildRemoteTree(ctx, folder.Id, "", ignoreList, localTree)
 		if err != nil {
 			u.PrintFatal("failed to build remote tree", err)
 		}
 		u.ClearLines(1)
 
 		plan := drive.CompareTrees(localTree, remoteTree)
+		plan.Deletes = append(plan.Deletes, orphanFolders...)
 
 		total := len(plan.Creates) + len(plan.Updates) + len(plan.Deletes)
 		if total == 0 {
