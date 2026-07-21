@@ -23,7 +23,10 @@ var purgeCmd = &cobra.Command{
 			u.PrintFatal("failed to resolve path", err)
 		}
 
-		if !purgeFlags.yes && !u.GlobalForAIFlag {
+		if !purgeFlags.yes {
+			if u.GlobalForAIFlag {
+				u.PrintFatal("refusing to purge without --yes in --for-ai mode", nil)
+			}
 			answer, err := u.PromptInput("Permanently delete "+f.Name+"? Type 'yes' to confirm:", "yes/no")
 			if err != nil {
 				u.PrintFatal("failed to read confirmation", err)

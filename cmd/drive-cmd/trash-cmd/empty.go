@@ -17,7 +17,10 @@ var emptyCmd = &cobra.Command{
 	Short: "Permanently delete all items in trash",
 	Args:  cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
-		if !emptyFlags.yes && !u.GlobalForAIFlag {
+		if !emptyFlags.yes {
+			if u.GlobalForAIFlag {
+				u.PrintFatal("refusing to empty trash without --yes in --for-ai mode", nil)
+			}
 			answer, err := u.PromptInput("Permanently delete all trashed items? Type 'yes' to confirm:", "yes/no")
 			if err != nil {
 				u.PrintFatal("failed to read confirmation", err)
