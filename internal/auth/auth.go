@@ -18,7 +18,6 @@ import (
 	u "github.com/tanq16/gcli/utils"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
-	"google.golang.org/api/calendar/v3"
 	drive "google.golang.org/api/drive/v3"
 	"google.golang.org/api/gmail/v1"
 )
@@ -44,7 +43,6 @@ func LoadCredentials() (*oauth2.Config, error) {
 	config, err := google.ConfigFromJSON(data,
 		drive.DriveScope,
 		gmail.GmailModifyScope,
-		calendar.CalendarScope,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("invalid credentials file: %w", err)
