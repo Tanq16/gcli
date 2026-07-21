@@ -9,9 +9,10 @@ import (
 )
 
 var moveCmd = &cobra.Command{
-	Use:   "move <src> <dst>",
-	Short: "Move or rename a file or folder",
-	Args:  cobra.ExactArgs(2),
+	Use:     "move <src> <dst>",
+	Aliases: []string{"mv"},
+	Short:   "Move or rename a file or folder",
+	Args:    cobra.ExactArgs(2),
 	Run: func(cmd *cobra.Command, args []string) {
 		src, err := drive.ResolvePath(args[0])
 		if err != nil {

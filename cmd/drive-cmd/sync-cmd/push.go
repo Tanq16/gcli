@@ -2,8 +2,6 @@ package syncCmd
 
 import (
 	"fmt"
-	"sync/atomic"
-	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/tanq16/gcli/internal/drive"
@@ -62,33 +60,10 @@ var pushCmd = &cobra.Command{
 
 		u.PrintRunning(fmt.Sprintf("syncing %d items", total))
 		progress := &drive.SyncProgress{}
-		done := make(chan struct{})
-		var printed atomic.Bool
-		go func() {
-			ticker := time.NewTicker(1 * time.Second)
-			defer ticker.Stop()
-			firstTick := true
-			for {
-				select {
-				case <-done:
-					return
-				case <-ticker.C:
-					if !firstTick {
-						u.ClearPreviousLine()
-					}
-					firstTick = false
-					printed.Store(true)
-					pct := int(progress.Completed.Load()) * 100 / total
-					u.PrintProgress("pushing", pct)
-				}
-			}
-		}()
+		stop := startProgressTicker("pushing", progress, total)
 
 		err = drive.ExecutePush(ctx, plan, localPath, folder.Id, pushFlags.concurrency, progress)
-		close(done)
-		if printed.Load() {
-			u.ClearPreviousLine()
-		}
+		stop()
 		u.ClearLines(1)
 
 		if err != nil {
@@ -101,6 +76,6 @@ var pushCmd = &cobra.Command{
 
 func init() {
 	SyncCmd.AddCommand(pushCmd)
-	pushCmd.Flags().IntVarP(&pushFlags.concurrency, "concurrency", "t", 4, "Number of concurrent operations")
+	pushCmd.Flags().IntVarP(&pushFlags.concurrency, "concurrency", "c", 4, "Number of concurrent operations")
 	pushCmd.Flags().StringVarP(&pushFlags.ignore, "ignore", "i", "", "Comma-separated names to skip")
 }

@@ -11,7 +11,7 @@ var sharedFlag bool
 
 func init() {
 	DriveCmd.AddCommand(syncCmd.SyncCmd)
-	DriveCmd.PersistentFlags().BoolVarP(&sharedFlag, "shared", "s", false, "Resolve paths from 'Shared with me' instead of My Drive")
+	DriveCmd.PersistentFlags().BoolVarP(&sharedFlag, "shared", "S", false, "Resolve paths from 'Shared with me' instead of My Drive")
 }
 
 // DriveCmd is the parent command for all Google Drive operations

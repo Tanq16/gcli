@@ -11,9 +11,10 @@ var deleteFlags struct {
 }
 
 var deleteCmd = &cobra.Command{
-	Use:   "delete <path>",
-	Short: "Delete a file or folder",
-	Args:  cobra.ExactArgs(1),
+	Use:     "delete <path>",
+	Aliases: []string{"rm"},
+	Short:   "Delete a file or folder",
+	Args:    cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		f, err := drive.ResolveOrID(args[0], deleteFlags.id)
 		if err != nil {
