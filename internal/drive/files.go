@@ -17,8 +17,8 @@ func GetFile(fileID string) (*driveapi.File, error) {
 	return f, nil
 }
 
-// DeleteFile permanently deletes a file by ID
-func DeleteFile(fileID string) error {
+// PurgeFile permanently deletes a file by ID, bypassing trash
+func PurgeFile(fileID string) error {
 	err := Service.Files.Delete(fileID).
 		SupportsAllDrives(true).
 		Do()

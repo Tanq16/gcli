@@ -3,6 +3,7 @@ package driveCmd
 import (
 	"github.com/spf13/cobra"
 	syncCmd "github.com/tanq16/gcli/cmd/drive-cmd/sync-cmd"
+	trashCmd "github.com/tanq16/gcli/cmd/drive-cmd/trash-cmd"
 	"github.com/tanq16/gcli/internal/auth"
 	"github.com/tanq16/gcli/internal/drive"
 )
@@ -11,6 +12,8 @@ var sharedFlag bool
 
 func init() {
 	DriveCmd.AddCommand(syncCmd.SyncCmd)
+	DriveCmd.AddCommand(trashCmd.TrashCmd)
+	DriveCmd.AddCommand(trashCmd.RestoreCmd)
 	DriveCmd.PersistentFlags().BoolVarP(&sharedFlag, "shared", "S", false, "Resolve paths from 'Shared with me' instead of My Drive")
 }
 
