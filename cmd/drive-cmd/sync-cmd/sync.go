@@ -1,6 +1,7 @@
 package syncCmd
 
 import (
+	"fmt"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -44,6 +45,51 @@ func startProgressTicker(label string, progress *drive.SyncProgress, total int) 
 			u.ClearPreviousLine()
 		}
 	}
+}
+
+func reviewPlan(plan *drive.SyncPlan, deleteEnabled, dryRun bool, deleteTarget string) bool {
+	skipped := 0
+	if !deleteEnabled {
+		skipped = len(plan.Deletes)
+		plan.Deletes = nil
+	}
+
+	total := len(plan.Creates) + len(plan.Updates) + len(plan.Deletes)
+	if total == 0 {
+		if skipped > 0 {
+			u.PrintWarn(fmt.Sprintf("%d %s pending removal; re-run with --delete to apply", skipped, deleteTarget), nil)
+		} else {
+			u.PrintSuccess("already in sync")
+		}
+		return false
+	}
+
+	u.PrintInfo(fmt.Sprintf("sync plan: %d creates, %d updates, %d deletes",
+		len(plan.Creates), len(plan.Updates), len(plan.Deletes)))
+	if skipped > 0 {
+		u.PrintWarn(fmt.Sprintf("%d %s pending removal; re-run with --delete to apply", skipped, deleteTarget), nil)
+	}
+	for _, action := range plan.Deletes {
+		u.PrintInfo("delete " + action.RelPath)
+	}
+
+	if dryRun {
+		u.PrintInfo("dry run; no changes made")
+		return false
+	}
+
+	if len(plan.Deletes) > 0 && !u.GlobalForAIFlag {
+		answer, err := u.PromptInput(fmt.Sprintf("Delete %d %s? Type 'yes' to confirm:", len(plan.Deletes), deleteTarget), "yes/no")
+		if err != nil {
+			u.PrintFatal("failed to read confirmation", err)
+		}
+		if strings.ToLower(strings.TrimSpace(answer)) != "yes" {
+			u.PrintInfo("aborted")
+			return false
+		}
+	}
+
+	return true
 }
 
 func parseIgnore(ignore string) []string {

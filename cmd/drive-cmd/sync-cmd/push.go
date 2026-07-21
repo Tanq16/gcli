@@ -11,6 +11,8 @@ import (
 var pushFlags struct {
 	concurrency int
 	ignore      string
+	dryRun      bool
+	delete      bool
 }
 
 var pushCmd = &cobra.Command{
@@ -49,15 +51,11 @@ var pushCmd = &cobra.Command{
 		plan := drive.CompareTrees(localTree, remoteTree)
 		plan.Deletes = append(plan.Deletes, orphanFolders...)
 
-		total := len(plan.Creates) + len(plan.Updates) + len(plan.Deletes)
-		if total == 0 {
-			u.PrintSuccess("already in sync")
+		if !reviewPlan(plan, pushFlags.delete, pushFlags.dryRun, "remote items") {
 			return
 		}
 
-		u.PrintInfo(fmt.Sprintf("sync plan: %d creates, %d updates, %d deletes",
-			len(plan.Creates), len(plan.Updates), len(plan.Deletes)))
-
+		total := len(plan.Creates) + len(plan.Updates) + len(plan.Deletes)
 		u.PrintRunning(fmt.Sprintf("syncing %d items", total))
 		progress := &drive.SyncProgress{}
 		stop := startProgressTicker("pushing", progress, total)
@@ -78,4 +76,6 @@ func init() {
 	SyncCmd.AddCommand(pushCmd)
 	pushCmd.Flags().IntVarP(&pushFlags.concurrency, "concurrency", "c", 4, "Number of concurrent operations")
 	pushCmd.Flags().StringVarP(&pushFlags.ignore, "ignore", "i", "", "Comma-separated names to skip")
+	pushCmd.Flags().BoolVar(&pushFlags.dryRun, "dry-run", false, "Show the sync plan without making changes")
+	pushCmd.Flags().BoolVar(&pushFlags.delete, "delete", false, "Delete remote items not present locally")
 }
