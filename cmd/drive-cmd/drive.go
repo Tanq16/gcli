@@ -2,7 +2,9 @@ package driveCmd
 
 import (
 	"github.com/spf13/cobra"
+	linkCmd "github.com/tanq16/gcli/cmd/drive-cmd/link-cmd"
 	syncCmd "github.com/tanq16/gcli/cmd/drive-cmd/sync-cmd"
+	trashCmd "github.com/tanq16/gcli/cmd/drive-cmd/trash-cmd"
 	"github.com/tanq16/gcli/internal/auth"
 	"github.com/tanq16/gcli/internal/drive"
 )
@@ -11,7 +13,10 @@ var sharedFlag bool
 
 func init() {
 	DriveCmd.AddCommand(syncCmd.SyncCmd)
-	DriveCmd.PersistentFlags().BoolVarP(&sharedFlag, "shared", "s", false, "Resolve paths from 'Shared with me' instead of My Drive")
+	DriveCmd.AddCommand(trashCmd.TrashCmd)
+	DriveCmd.AddCommand(trashCmd.RestoreCmd)
+	DriveCmd.AddCommand(linkCmd.LinkCmd)
+	DriveCmd.PersistentFlags().BoolVarP(&sharedFlag, "shared", "S", false, "Resolve paths from 'Shared with me' instead of My Drive")
 }
 
 // DriveCmd is the parent command for all Google Drive operations

@@ -3,9 +3,7 @@ package driveCmd
 import (
 	"github.com/spf13/cobra"
 	"github.com/tanq16/gcli/internal/drive"
-	"github.com/tanq16/gcli/internal/gapi"
 	u "github.com/tanq16/gcli/utils"
-	driveapi "google.golang.org/api/drive/v3"
 )
 
 var permListFlags struct {
@@ -37,22 +35,19 @@ var permListCmd = &cobra.Command{
 			u.PrintFatal("failed to resolve path", err)
 		}
 
-		perms, err := drive.Service.Files.Get(f.Id).
-			Fields("permissions(id, type, role, emailAddress)").
-			SupportsAllDrives(true).
-			Do()
+		perms, err := drive.GetPermissions(f.Id)
 		if err != nil {
-			u.PrintFatal("failed to get permissions", gapi.HandleError(err))
+			u.PrintFatal("failed to get permissions", err)
 		}
 
-		if len(perms.Permissions) == 0 {
+		if len(perms) == 0 {
 			u.PrintInfo("no permissions found")
 			return
 		}
 
 		headers := []string{"ID", "TYPE", "ROLE", "EMAIL"}
 		var rows [][]string
-		for _, p := range perms.Permissions {
+		for _, p := range perms {
 			email := p.EmailAddress
 			if email == "" {
 				email = "-"
@@ -78,19 +73,9 @@ var permCreateCmd = &cobra.Command{
 			u.PrintFatal("failed to resolve path", err)
 		}
 
-		perm := &driveapi.Permission{
-			Type: permCreateFlags.permType,
-			Role: permCreateFlags.role,
-		}
-		if permCreateFlags.email != "" {
-			perm.EmailAddress = permCreateFlags.email
-		}
-
-		created, err := drive.Service.Permissions.Create(f.Id, perm).
-			SupportsAllDrives(true).
-			Do()
+		created, err := drive.CreatePermission(f.Id, permCreateFlags.permType, permCreateFlags.role, permCreateFlags.email)
 		if err != nil {
-			u.PrintFatal("failed to create permission", gapi.HandleError(err))
+			u.PrintFatal("failed to create permission", err)
 		}
 
 		u.PrintSuccess("created permission " + created.Id + " (" + created.Role + ")")
@@ -108,11 +93,8 @@ var permDeleteCmd = &cobra.Command{
 		}
 
 		permID := args[1]
-		err = drive.Service.Permissions.Delete(f.Id, permID).
-			SupportsAllDrives(true).
-			Do()
-		if err != nil {
-			u.PrintFatal("failed to delete permission", gapi.HandleError(err))
+		if err := drive.DeletePermission(f.Id, permID); err != nil {
+			u.PrintFatal("failed to delete permission", err)
 		}
 
 		u.PrintSuccess("deleted permission " + permID)
@@ -128,6 +110,6 @@ func init() {
 	permListCmd.Flags().StringVarP(&permListFlags.id, "id", "i", "", "Use file ID instead of path")
 	permCreateCmd.Flags().StringVarP(&permCreateFlags.permType, "type", "t", "", "Permission type (user, group, domain, anyone)")
 	permCreateCmd.Flags().StringVarP(&permCreateFlags.role, "role", "r", "", "Permission role (reader, writer, commenter)")
-	permCreateCmd.Flags().StringVar(&permCreateFlags.email, "email", "", "Email address for the permission")
+	permCreateCmd.Flags().StringVarP(&permCreateFlags.email, "email", "e", "", "Email address for the permission")
 	permDeleteCmd.Flags().StringVarP(&permDeleteFlags.id, "id", "i", "", "Use file ID instead of path")
 }

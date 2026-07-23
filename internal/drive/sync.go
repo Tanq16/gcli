@@ -293,7 +293,7 @@ func ExecutePush(ctx context.Context, plan *SyncPlan, localRoot string, remoteFo
 					return ctx.Err()
 				default:
 				}
-				err := DeleteFile(action.RemoteID)
+				err := PurgeFile(action.RemoteID)
 				if err == nil {
 					progress.Completed.Add(1)
 				}

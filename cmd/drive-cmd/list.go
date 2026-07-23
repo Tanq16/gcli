@@ -15,9 +15,10 @@ var listFlags struct {
 }
 
 var listCmd = &cobra.Command{
-	Use:   "list [path]",
-	Short: "List folder contents",
-	Args:  cobra.MaximumNArgs(1),
+	Use:     "list [path]",
+	Aliases: []string{"ls"},
+	Short:   "List folder contents",
+	Args:    cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		path := "/"
 		if len(args) > 0 {

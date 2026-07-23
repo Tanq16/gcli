@@ -13,9 +13,10 @@ var copyFlags struct {
 }
 
 var copyCmd = &cobra.Command{
-	Use:   "copy <src> <dst>",
-	Short: "Copy a file to a destination folder",
-	Args:  cobra.ExactArgs(2),
+	Use:     "copy <src> <dst>",
+	Aliases: []string{"cp"},
+	Short:   "Copy a file to a destination folder",
+	Args:    cobra.ExactArgs(2),
 	Run: func(cmd *cobra.Command, args []string) {
 		src, err := drive.ResolvePath(args[0])
 		if err != nil {

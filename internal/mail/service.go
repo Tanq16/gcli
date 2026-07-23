@@ -19,4 +19,3 @@ func Init(client *http.Client) error {
 	Service = srv
 	return nil
 }
-

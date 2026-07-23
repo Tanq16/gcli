@@ -8,7 +8,6 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
-	calCmd "github.com/tanq16/gcli/cmd/cal-cmd"
 	driveCmd "github.com/tanq16/gcli/cmd/drive-cmd"
 	mailCmd "github.com/tanq16/gcli/cmd/mail-cmd"
 	u "github.com/tanq16/gcli/utils"
@@ -20,7 +19,7 @@ var forAIFlag bool
 
 var rootCmd = &cobra.Command{
 	Use:     "gcli",
-	Short:   "CLI tool for Google Drive, Gmail, and Calendar",
+	Short:   "CLI tool for Google Drive and Gmail",
 	Version: AppVersion,
 	CompletionOptions: cobra.CompletionOptions{
 		HiddenDefaultCmd: true,
@@ -62,5 +61,4 @@ func init() {
 
 	rootCmd.AddCommand(driveCmd.DriveCmd)
 	rootCmd.AddCommand(mailCmd.MailCmd)
-	rootCmd.AddCommand(calCmd.CalCmd)
 }
