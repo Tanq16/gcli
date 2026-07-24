@@ -1,65 +1,51 @@
 package drive
 
 import (
+	"context"
+
 	"github.com/tanq16/gcli/internal/gapi"
 	driveapi "google.golang.org/api/drive/v3"
 )
 
-// GetFile retrieves a file's metadata by ID
-func GetFile(fileID string) (*driveapi.File, error) {
-	f, err := Service.Files.Get(fileID).
-		Fields(FileFields()).
-		SupportsAllDrives(true).
-		Do()
-	if err != nil {
-		return nil, gapi.HandleError(err)
-	}
-	return f, nil
+// GetFile retrieves a file's metadata by ID.
+func (c *Client) GetFile(ctx context.Context, fileID string) (*driveapi.File, error) {
+	return c.getByID(ctx, fileID)
 }
 
-func PurgeFile(fileID string) error {
-	err := Service.Files.Delete(fileID).
-		SupportsAllDrives(true).
-		Do()
-	if err != nil {
+// TrashFile moves a file to Drive trash (recoverable, 30-day auto-purge). This is
+// the delete primitive for rm and for sync's remote-side deletes — never PurgeFile.
+func (c *Client) TrashFile(ctx context.Context, fileID string) error {
+	return gapi.RetryErr(ctx, func() error {
+		_, err := c.svc.Files.Update(fileID, &driveapi.File{Trashed: true}).
+			SupportsAllDrives(true).Context(ctx).Do()
 		return gapi.HandleError(err)
-	}
-	return nil
+	})
 }
 
-// CopyFile copies a file to a new location with an optional new name
-func CopyFile(fileID string, name string, parentID string) (*driveapi.File, error) {
-	meta := &driveapi.File{
-		Name:    name,
-		Parents: []string{parentID},
-	}
-	copied, err := Service.Files.Copy(fileID, meta).
-		Fields(FileFields()).
-		SupportsAllDrives(true).
-		Do()
-	if err != nil {
-		return nil, gapi.HandleError(err)
-	}
-	return copied, nil
+// PurgeFile permanently deletes a file, bypassing trash.
+func (c *Client) PurgeFile(ctx context.Context, fileID string) error {
+	return gapi.RetryErr(ctx, func() error {
+		err := c.svc.Files.Delete(fileID).SupportsAllDrives(true).Context(ctx).Do()
+		return gapi.HandleError(err)
+	})
 }
 
-// MoveFile moves a file to a new parent and/or renames it
-func MoveFile(fileID string, newName string, currentParentID string, newParentID string) (*driveapi.File, error) {
+// MoveFile moves a file to a new parent and/or renames it. An empty newName keeps
+// the current name; an empty or unchanged newParentID keeps the current parent.
+func (c *Client) MoveFile(ctx context.Context, fileID, newName, currentParentID, newParentID string) (*driveapi.File, error) {
 	meta := &driveapi.File{}
 	if newName != "" {
 		meta.Name = newName
 	}
-	call := Service.Files.Update(fileID, meta).
-		Fields(FileFields()).
-		SupportsAllDrives(true)
-
-	if newParentID != "" && newParentID != currentParentID {
-		call = call.AddParents(newParentID).RemoveParents(currentParentID)
-	}
-
-	moved, err := call.Do()
+	f, err := gapi.Retry(ctx, func() (*driveapi.File, error) {
+		call := c.svc.Files.Update(fileID, meta).Fields(FileFields()).SupportsAllDrives(true).Context(ctx)
+		if newParentID != "" && newParentID != currentParentID {
+			call = call.AddParents(newParentID).RemoveParents(currentParentID)
+		}
+		return call.Do()
+	})
 	if err != nil {
 		return nil, gapi.HandleError(err)
 	}
-	return moved, nil
+	return f, nil
 }

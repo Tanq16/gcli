@@ -2,23 +2,21 @@ package mailCmd
 
 import (
 	"github.com/spf13/cobra"
-	markCmd "github.com/tanq16/gcli/cmd/mail-cmd/mark-cmd"
 	"github.com/tanq16/gcli/internal/auth"
 	"github.com/tanq16/gcli/internal/mail"
+	u "github.com/tanq16/gcli/utils"
 )
-
-func init() {
-	MailCmd.AddCommand(markCmd.MarkCmd)
-}
 
 var MailCmd = &cobra.Command{
 	Use:   "mail",
 	Short: "Gmail operations",
-	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		client, err := auth.GetHTTPClient()
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		client, err := auth.GetHTTPClient(cmd.Context())
 		if err != nil {
-			return err
+			u.PrintFatalCode("not authenticated — run 'gcli login'", err, u.ExitAuth)
 		}
-		return mail.Init(client)
+		if err := mail.Init(client); err != nil {
+			u.PrintFatalCode("failed to initialize Gmail client", err, u.ExitAuth)
+		}
 	},
 }

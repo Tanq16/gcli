@@ -1,16 +1,17 @@
 package driveCmd
 
 import (
+	"context"
 	"fmt"
-	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/tanq16/gcli/internal/drive"
 	u "github.com/tanq16/gcli/utils"
+	driveapi "google.golang.org/api/drive/v3"
 )
 
 var infoFlags struct {
-	id string
+	revisions bool
 }
 
 var infoCmd = &cobra.Command{
@@ -18,43 +19,92 @@ var infoCmd = &cobra.Command{
 	Short: "Show file or folder metadata",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		f, err := drive.ResolveOrID(args[0], infoFlags.id)
+		ctx := cmd.Context()
+		c := drive.C()
+		f, err := c.ResolveArg(ctx, args[0])
 		if err != nil {
 			u.PrintFatal("failed to resolve path", err)
 		}
 
-		modified := f.ModifiedTime
-		if len(modified) > 19 {
-			modified = modified[:19]
-			modified = strings.Replace(modified, "T", " ", 1)
+		path := "-"
+		if p, err := c.ResolveIDToPath(ctx, f.Id); err == nil {
+			path = "/" + p
 		}
+		u.PrintTable(infoRows(f, path))
 
-		fileType := "file"
-		if drive.IsFolder(f) {
-			fileType = "folder"
-		} else if drive.IsWorkspaceFile(f) {
-			fileType = "workspace"
+		if infoFlags.revisions {
+			printRevisions(ctx, c, f)
 		}
-
-		u.PrintGeneric(fmt.Sprintf("Name:     %s", f.Name))
-		u.PrintGeneric(fmt.Sprintf("ID:       %s", f.Id))
-		u.PrintGeneric(fmt.Sprintf("Type:     %s", fileType))
-		u.PrintGeneric(fmt.Sprintf("MIME:     %s", f.MimeType))
-		if !drive.IsFolder(f) && !drive.IsWorkspaceFile(f) {
-			u.PrintGeneric(fmt.Sprintf("Size:     %s", u.FormatSize(f.Size)))
-			if f.Md5Checksum != "" {
-				u.PrintGeneric(fmt.Sprintf("MD5:      %s", f.Md5Checksum))
-			}
-		}
-		u.PrintGeneric(fmt.Sprintf("Modified: %s", modified))
-		if len(f.Parents) > 0 {
-			u.PrintGeneric(fmt.Sprintf("Parent:   %s", f.Parents[0]))
-		}
-		u.PrintGeneric(fmt.Sprintf("Trashed:  %v", f.Trashed))
 	},
+}
+
+func infoRows(f *driveapi.File, path string) ([]string, [][]string) {
+	rows := [][]string{
+		{"Name", f.Name},
+		{"Type", drive.FileType(f)},
+		{"Path", path},
+	}
+	if !drive.IsFolder(f) && !drive.IsWorkspaceFile(f) {
+		rows = append(rows, []string{"Size", u.FormatSize(f.Size)})
+		if f.Md5Checksum != "" {
+			rows = append(rows, []string{"MD5", f.Md5Checksum})
+		}
+	}
+	rows = append(rows,
+		[]string{"Created", drive.FormatDriveTime(f.CreatedTime)},
+		[]string{"Modified", drive.FormatDriveTime(f.ModifiedTime)},
+		[]string{"Owner", ownerOf(f)},
+		[]string{"Shared", fmt.Sprintf("%v", f.Shared)},
+	)
+	if f.WebViewLink != "" {
+		rows = append(rows, []string{"WebViewLink", f.WebViewLink})
+	}
+	rows = append(rows,
+		[]string{"ID", f.Id},
+		[]string{"Trashed", fmt.Sprintf("%v", f.Trashed)},
+	)
+	return []string{"FIELD", "VALUE"}, rows
+}
+
+func ownerOf(f *driveapi.File) string {
+	if len(f.Owners) == 0 {
+		return "-"
+	}
+	o := f.Owners[0]
+	if o.EmailAddress != "" {
+		return o.EmailAddress
+	}
+	if o.DisplayName != "" {
+		return o.DisplayName
+	}
+	return "-"
+}
+
+func printRevisions(ctx context.Context, c *drive.Client, f *driveapi.File) {
+	if drive.IsFolder(f) {
+		u.PrintWarn("folders have no revisions — ignoring --revisions", nil)
+		return
+	}
+	revs, err := c.ListRevisions(ctx, f.Id)
+	if err != nil {
+		u.PrintFatal("failed to list revisions", err)
+	}
+	if len(revs) == 0 {
+		u.PrintInfo("no revisions")
+		return
+	}
+	rows := make([][]string, 0, len(revs))
+	for _, r := range revs {
+		size := "-"
+		if r.Size > 0 {
+			size = u.FormatSize(r.Size)
+		}
+		rows = append(rows, []string{r.Id, drive.FormatDriveTime(r.ModifiedTime), size, fmt.Sprintf("%v", r.KeepForever)})
+	}
+	u.PrintTable([]string{"REVISION", "MODIFIED", "SIZE", "KEPT"}, rows)
 }
 
 func init() {
 	DriveCmd.AddCommand(infoCmd)
-	infoCmd.Flags().StringVarP(&infoFlags.id, "id", "i", "", "Use file ID instead of path")
+	infoCmd.Flags().BoolVar(&infoFlags.revisions, "revisions", false, "Also list the file's revision history")
 }

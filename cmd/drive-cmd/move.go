@@ -1,7 +1,7 @@
 package driveCmd
 
 import (
-	"path"
+	"context"
 
 	"github.com/spf13/cobra"
 	"github.com/tanq16/gcli/internal/drive"
@@ -14,29 +14,46 @@ var moveCmd = &cobra.Command{
 	Short:   "Move or rename a file or folder",
 	Args:    cobra.ExactArgs(2),
 	Run: func(cmd *cobra.Command, args []string) {
-		src, err := drive.ResolvePath(args[0])
+		ctx := cmd.Context()
+		c := drive.C()
+
+		src, err := c.ResolveArg(ctx, args[0])
 		if err != nil {
 			u.PrintFatal("failed to resolve source", err)
 		}
-
-		currentParentID := ""
+		curParent := ""
 		if len(src.Parents) > 0 {
-			currentParentID = src.Parents[0]
+			curParent = src.Parents[0]
 		}
 
-		dstParentID, dstName, err := drive.ResolveParent(args[1])
-		if err != nil {
-			dstName = path.Base(args[1])
-			dstParentID = currentParentID
-		}
+		newParent, newName := moveDestination(ctx, c, args[1])
 
-		moved, err := drive.MoveFile(src.Id, dstName, currentParentID, dstParentID)
+		moved, err := c.MoveFile(ctx, src.Id, newName, curParent, newParent)
 		if err != nil {
 			u.PrintFatal("failed to move "+src.Name, err)
 		}
-
+		c.InvalidatePath(args[0])
+		c.InvalidatePath(args[1])
 		u.PrintSuccess("moved to " + moved.Name + " (" + moved.Id + ")")
 	},
+}
+
+// moveDestination resolves the destination into a (parentID, newName) pair. An
+// existing folder means move-into (name unchanged); otherwise the destination's
+// parent must resolve — an unresolvable parent is a hard error, never a silent
+// in-place rename (the removed CL-03 footgun).
+func moveDestination(ctx context.Context, c *drive.Client, dst string) (string, string) {
+	if f, err := c.ResolveArg(ctx, dst); err == nil {
+		if !drive.IsFolder(f) {
+			u.PrintFatalCode("destination '"+f.Name+"' exists and is not a folder", nil, u.ExitUsage)
+		}
+		return f.Id, ""
+	}
+	parentID, name, err := c.ResolveArgParent(ctx, dst)
+	if err != nil {
+		u.PrintFatal("failed to resolve destination", err)
+	}
+	return parentID, name
 }
 
 func init() {

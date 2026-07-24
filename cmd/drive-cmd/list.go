@@ -1,6 +1,7 @@
 package driveCmd
 
 import (
+	"context"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -10,7 +11,7 @@ import (
 )
 
 var listFlags struct {
-	id     string
+	withID bool
 	filter string
 }
 
@@ -20,87 +21,107 @@ var listCmd = &cobra.Command{
 	Short:   "List folder contents",
 	Args:    cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
+		ctx := cmd.Context()
+		c := drive.C()
 		path := "/"
 		if len(args) > 0 {
 			path = args[0]
 		}
 
-		var files []*driveapi.File
-
-		if drive.SharedMode && strings.Trim(path, "/") == "" && listFlags.id == "" {
-			var err error
-			files, err = drive.ListShared()
-			if err != nil {
-				u.PrintFatal("failed to list shared items", err)
-			}
-		} else {
-			folder, err := drive.ResolveOrID(path, listFlags.id)
-			if err != nil {
-				u.PrintFatal("failed to resolve path", err)
-			}
-			if !drive.IsFolder(folder) {
-				u.PrintFatal("not a folder: "+folder.Name, nil)
-			}
-			files, err = drive.ListFolder(folder.Id)
-			if err != nil {
-				u.PrintFatal("failed to list folder", err)
-			}
-		}
-
-		if len(files) == 0 {
-			if drive.SharedMode {
-				u.PrintInfo("no shared items found")
-			} else {
-				u.PrintInfo("folder is empty")
-			}
+		files, empty := listEntries(ctx, c, path)
+		if empty {
 			return
 		}
 
 		if listFlags.filter != "" {
 			filter := strings.ToLower(listFlags.filter)
-			var filtered []*driveapi.File
+			var kept []*driveapi.File
 			for _, f := range files {
 				if strings.Contains(strings.ToLower(f.Name), filter) {
-					filtered = append(filtered, f)
+					kept = append(kept, f)
 				}
 			}
-			files = filtered
+			files = kept
 			if len(files) == 0 {
 				u.PrintInfo("no items match filter")
 				return
 			}
 		}
 
-		headers := []string{"TYPE", "NAME", "SIZE", "MODIFIED", "ID"}
-		var rows [][]string
-		for _, f := range files {
-			fileType := "file"
-			if drive.IsFolder(f) {
-				fileType = "dir"
-			} else if drive.IsWorkspaceFile(f) {
-				fileType = "gdoc"
-			}
-
-			size := u.FormatSize(f.Size)
-			if drive.IsFolder(f) || drive.IsWorkspaceFile(f) {
-				size = "-"
-			}
-
-			modified := ""
-			if f.ModifiedTime != "" {
-				modified = f.ModifiedTime[:16]
-				modified = strings.Replace(modified, "T", " ", 1)
-			}
-
-			rows = append(rows, []string{fileType, f.Name, size, modified, f.Id})
-		}
-
-		u.PrintTable(headers, rows)
+		u.PrintTable(fileColumns(files, listFlags.withID))
 	},
+}
+
+// listEntries resolves the listing for a path, handling the shared-namespace root
+// (union of shared drives + shared-with-me) specially. The bool reports an empty
+// listing already communicated to the user.
+func listEntries(ctx context.Context, c *drive.Client, path string) ([]*driveapi.File, bool) {
+	if c.Shared() && !c.ByID() && strings.Trim(path, "/") == "" {
+		var files []*driveapi.File
+		drives, err := c.ListSharedDrives(ctx)
+		if err != nil {
+			u.PrintFatal("failed to list shared drives", err)
+		}
+		for _, d := range drives {
+			files = append(files, &driveapi.File{Id: d.Id, Name: d.Name, MimeType: "application/vnd.google-apps.folder", DriveId: d.Id})
+		}
+		swm, err := c.ListSharedWithMe(ctx)
+		if err != nil {
+			u.PrintFatal("failed to list shared-with-me items", err)
+		}
+		files = append(files, swm...)
+		if len(files) == 0 {
+			u.PrintInfo("no shared items found")
+			return nil, true
+		}
+		return files, false
+	}
+
+	folder, err := c.ResolveArg(ctx, path)
+	if err != nil {
+		u.PrintFatal("failed to resolve path", err)
+	}
+	if !drive.IsFolder(folder) {
+		u.PrintFatalCode("not a folder: "+folder.Name, nil, u.ExitUsage)
+	}
+	files, err := c.ListFolder(ctx, folder)
+	if err != nil {
+		u.PrintFatal("failed to list folder", err)
+	}
+	if len(files) == 0 {
+		u.PrintInfo("folder is empty")
+		return nil, true
+	}
+	return files, false
+}
+
+// fileColumns builds the ls/search table: TYPE, NAME, SIZE, MODIFIED, and ID only
+// when withID is set.
+func fileColumns(files []*driveapi.File, withID bool) ([]string, [][]string) {
+	headers := []string{"TYPE", "NAME", "SIZE", "MODIFIED"}
+	if withID {
+		headers = append(headers, "ID")
+	}
+	rows := make([][]string, 0, len(files))
+	for _, f := range files {
+		row := []string{drive.FileType(f), f.Name, fileSize(f), drive.FormatDriveTime(f.ModifiedTime)}
+		if withID {
+			row = append(row, f.Id)
+		}
+		rows = append(rows, row)
+	}
+	return headers, rows
+}
+
+func fileSize(f *driveapi.File) string {
+	if drive.IsFolder(f) || drive.IsWorkspaceFile(f) {
+		return "-"
+	}
+	return u.FormatSize(f.Size)
 }
 
 func init() {
 	DriveCmd.AddCommand(listCmd)
-	listCmd.Flags().StringVarP(&listFlags.id, "id", "i", "", "Use folder ID instead of path")
-	listCmd.Flags().StringVarP(&listFlags.filter, "filter", "F", "", "Filter results by name")
+	listCmd.Flags().BoolVar(&listFlags.withID, "with-id", false, "Include the ID column")
+	listCmd.Flags().StringVarP(&listFlags.filter, "filter", "f", "", "Filter results by name substring")
 }

@@ -1,6 +1,8 @@
 package driveCmd
 
 import (
+	"context"
+	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -8,50 +10,51 @@ import (
 	u "github.com/tanq16/gcli/utils"
 )
 
+var uploadFlags struct {
+	keepRevision bool
+}
+
 var uploadCmd = &cobra.Command{
-	Use:   "upload <local> [remote]",
-	Short: "Upload file or folder to Google Drive",
-	Args:  cobra.RangeArgs(1, 2),
+	Use:     "upload <local> [remote]",
+	Aliases: []string{"up"},
+	Short:   "Upload a file or folder to Google Drive (cp -r; overwrites by name)",
+	Args:    cobra.RangeArgs(1, 2),
 	Run: func(cmd *cobra.Command, args []string) {
-		localPath := args[0]
-
-		remotePath := "/"
+		remote := "/"
 		if len(args) > 1 {
-			remotePath = args[1]
+			remote = args[1]
 		}
-
-		parent, err := drive.ResolvePath(remotePath)
+		res, err := drive.C().Upload(cmd.Context(), args[0], remote, uploadFlags.keepRevision)
 		if err != nil {
-			u.PrintFatal("failed to resolve remote path", err)
+			u.PrintFatal("upload failed", err)
 		}
-
-		if !drive.IsFolder(parent) {
-			u.PrintFatal("remote path must be a folder", nil)
-		}
-
-		info, err := os.Stat(localPath)
-		if err != nil {
-			u.PrintFatal("cannot access "+localPath, err)
-		}
-
-		if info.IsDir() {
-			if err := drive.UploadFolder(cmd.Context(), localPath, parent.Id); err != nil {
-				u.PrintFatal("folder upload failed", err)
-			}
-			u.PrintSuccess("folder uploaded successfully")
-		} else {
-			u.PrintRunning("uploading...")
-			uploaded, err := drive.UploadFile(localPath, parent.Id)
-			if err != nil {
-				u.ClearLines(1)
-				u.PrintFatal("upload failed", err)
-			}
-			u.ClearLines(1)
-			u.PrintSuccess("uploaded " + uploaded.Name + " (" + uploaded.Id + ")")
-		}
+		reportTransfer(cmd.Context(), "uploaded", res)
 	},
+}
+
+// reportTransfer prints the outcome of a folder/file transfer. A cancelled run
+// is a single warning + exit 130 (spec §9.4); otherwise skipped items render as
+// warnings, per-item failures as indented errors with an ExitPartial exit, or a
+// success summary.
+func reportTransfer(ctx context.Context, verb string, res *drive.TransferResult) {
+	if ctx.Err() != nil {
+		u.PrintWarn("cancelled — partial state remains", nil)
+		os.Exit(u.ExitCancelled)
+	}
+	for _, s := range res.Skipped {
+		u.PrintWarn("skipped "+s, nil)
+	}
+	if len(res.Errors) > 0 {
+		u.PrintError(fmt.Sprintf("%s completed with %d error(s): %d ok", verb, len(res.Errors), res.Files), nil)
+		for _, e := range res.Errors {
+			u.PrintIndentedError(e.RelPath, e.Err)
+		}
+		os.Exit(u.ExitPartial)
+	}
+	u.PrintSuccess(fmt.Sprintf("%s %d file(s), %s", verb, res.Files, u.FormatSize(res.Bytes)))
 }
 
 func init() {
 	DriveCmd.AddCommand(uploadCmd)
+	uploadCmd.Flags().BoolVar(&uploadFlags.keepRevision, "keep-revision", false, "Pin the resulting head revision so Drive never auto-prunes it")
 }

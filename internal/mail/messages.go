@@ -3,9 +3,11 @@ package mail
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
+	"github.com/jaytaylor/html2text"
 	"github.com/tanq16/gcli/internal/gapi"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/api/gmail/v1"
@@ -27,7 +29,7 @@ func ListThreads(ctx context.Context, label string, unread bool, count int64) ([
 		call = call.Q("is:unread")
 	}
 
-	resp, err := call.Do()
+	resp, err := call.Context(ctx).Do()
 	if err != nil {
 		return nil, gapi.HandleError(err)
 	}
@@ -36,7 +38,7 @@ func ListThreads(ctx context.Context, label string, unread bool, count int64) ([
 }
 
 func SearchThreads(ctx context.Context, query string, max int64) ([]ThreadSummary, error) {
-	resp, err := Service.Users.Threads.List("me").Q(query).MaxResults(max).Do()
+	resp, err := Service.Users.Threads.List("me").Q(query).MaxResults(max).Context(ctx).Do()
 	if err != nil {
 		return nil, gapi.HandleError(err)
 	}
@@ -52,10 +54,11 @@ func GetThread(id string) (*gmail.Thread, error) {
 	return thread, nil
 }
 
-func GetThreadMetadata(id string) (*gmail.Thread, error) {
+func GetThreadMetadata(ctx context.Context, id string) (*gmail.Thread, error) {
 	thread, err := Service.Users.Threads.Get("me", id).
 		Format("metadata").
 		MetadataHeaders("From", "To", "Subject", "Date").
+		Context(ctx).
 		Do()
 	if err != nil {
 		return nil, gapi.HandleError(err)
@@ -87,7 +90,7 @@ func fetchThreadSummaries(ctx context.Context, threads []*gmail.Thread) ([]Threa
 				return ctx.Err()
 			default:
 			}
-			thread, err := GetThreadMetadata(t.Id)
+			thread, err := GetThreadMetadata(ctx, t.Id)
 			if err != nil {
 				return err
 			}
@@ -100,13 +103,8 @@ func fetchThreadSummaries(ctx context.Context, threads []*gmail.Thread) ([]Threa
 
 			unread := false
 			for _, msg := range msgs {
-				for _, lbl := range msg.LabelIds {
-					if lbl == "UNREAD" {
-						unread = true
-						break
-					}
-				}
-				if unread {
+				if slices.Contains(msg.LabelIds, "UNREAD") {
+					unread = true
 					break
 				}
 			}
@@ -131,7 +129,14 @@ func fetchThreadSummaries(ctx context.Context, threads []*gmail.Thread) ([]Threa
 	if err := g.Wait(); err != nil {
 		return nil, err
 	}
-	return summaries, nil
+	// Threads with no messages leave a zero-value entry; drop them so blank rows never render (CC-13).
+	result := summaries[:0]
+	for _, s := range summaries {
+		if s.ID != "" {
+			result = append(result, s)
+		}
+	}
+	return result, nil
 }
 
 func formatFrom(from string) string {
@@ -158,8 +163,8 @@ func formatDate(dateStr string) string {
 			return t.Local().Format("Jan 02 15:04")
 		}
 	}
-	if len(dateStr) > 16 {
-		return dateStr[:16]
+	if r := []rune(dateStr); len(r) > 16 {
+		return string(r[:16])
 	}
 	return dateStr
 }
@@ -168,11 +173,35 @@ func ExtractBody(msg *gmail.Message) string {
 	if msg.Payload == nil {
 		return msg.Snippet
 	}
-	body := extractBody(msg.Payload)
+	body, isHTML := extractBody(msg.Payload)
 	if body == "" {
 		return msg.Snippet
 	}
+	if isHTML {
+		if text, err := html2text.FromString(body); err == nil && strings.TrimSpace(text) != "" {
+			return text
+		}
+	}
 	return body
+}
+
+func StripQuotedText(body string) string {
+	lines := strings.Split(body, "\n")
+	var result []string
+	for _, line := range lines {
+		if strings.HasPrefix(line, ">") || strings.HasPrefix(line, "&gt;") {
+			continue
+		}
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "On ") && strings.Contains(trimmed, " wrote:") {
+			break
+		}
+		if strings.HasPrefix(trimmed, "________") {
+			break
+		}
+		result = append(result, line)
+	}
+	return strings.TrimRight(strings.Join(result, "\n"), "\n ")
 }
 
 func ExtractHeader(msg *gmail.Message, name string) string {
