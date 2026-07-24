@@ -11,14 +11,13 @@ import (
 )
 
 var (
-	infoStyle    = lipgloss.NewStyle().Foreground(lipgloss.ANSIColor(12)) // bright blue
-	successStyle = lipgloss.NewStyle().Foreground(lipgloss.ANSIColor(10)) // bright green
-	errorStyle   = lipgloss.NewStyle().Foreground(lipgloss.ANSIColor(9))  // bright red
-	warnStyle    = lipgloss.NewStyle().Foreground(lipgloss.ANSIColor(11)) // bright yellow
+	infoStyle    = lipgloss.NewStyle().Foreground(lipgloss.ANSIColor(12))
+	successStyle = lipgloss.NewStyle().Foreground(lipgloss.ANSIColor(10))
+	errorStyle   = lipgloss.NewStyle().Foreground(lipgloss.ANSIColor(9))
+	warnStyle    = lipgloss.NewStyle().Foreground(lipgloss.ANSIColor(11))
 )
 
-// flattenErr renders the full wrapped error chain on a single line, collapsing
-// newlines so one error is always one line in --for-ai output (spec §9.3).
+// Collapse newlines so one error is always one line in --for-ai output (spec §9.3).
 func flattenErr(err error) string {
 	if err == nil {
 		return ""
@@ -29,7 +28,6 @@ func flattenErr(err error) string {
 	return strings.TrimSpace(s)
 }
 
-// aiError joins the human message with the full error chain in AI mode.
 func aiError(prefix, msg string, err error) string {
 	if err != nil {
 		return prefix + msg + ": " + flattenErr(err)
@@ -57,8 +55,6 @@ func PrintSuccess(msg string) {
 	}
 }
 
-// PrintError prints a diagnostic to stderr (does not exit). In --for-ai it
-// appends the full wrapped error chain; human mode shows the friendly cause.
 func PrintError(msg string, err error) {
 	if GlobalDebugFlag {
 		log.Error().Err(err).Msg(msg)
@@ -69,8 +65,6 @@ func PrintError(msg string, err error) {
 	}
 }
 
-// humanMsg appends the error's normalized cause to the message for the default
-// human tier, so the user always sees why an operation failed (spec §9.3).
 func humanMsg(msg string, err error) string {
 	if err != nil {
 		return msg + ": " + err.Error()
@@ -78,15 +72,12 @@ func humanMsg(msg string, err error) string {
 	return msg
 }
 
-// PrintFatal prints a diagnostic and exits, deriving the exit code from an
-// error implementing ExitCode() int (defaults to ExitGeneric).
 func PrintFatal(msg string, err error) {
 	PrintError(msg, err)
 	os.Exit(exitCodeFor(err))
 }
 
-// PrintFatalCode prints a diagnostic and exits with an explicit code — used for
-// failures classification cannot infer (usage, partial, auth-at-PreRun).
+// For failures classification cannot infer (usage, partial, auth-at-PreRun).
 func PrintFatalCode(msg string, err error, code int) {
 	PrintError(msg, err)
 	os.Exit(code)

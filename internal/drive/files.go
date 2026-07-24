@@ -7,7 +7,6 @@ import (
 	driveapi "google.golang.org/api/drive/v3"
 )
 
-// GetFile retrieves a file's metadata by ID.
 func (c *Client) GetFile(ctx context.Context, fileID string) (*driveapi.File, error) {
 	return c.getByID(ctx, fileID)
 }
@@ -22,7 +21,6 @@ func (c *Client) TrashFile(ctx context.Context, fileID string) error {
 	})
 }
 
-// PurgeFile permanently deletes a file, bypassing trash.
 func (c *Client) PurgeFile(ctx context.Context, fileID string) error {
 	return gapi.RetryErr(ctx, func() error {
 		err := c.svc.Files.Delete(fileID).SupportsAllDrives(true).Context(ctx).Do()
@@ -30,8 +28,8 @@ func (c *Client) PurgeFile(ctx context.Context, fileID string) error {
 	})
 }
 
-// MoveFile moves a file to a new parent and/or renames it. An empty newName keeps
-// the current name; an empty or unchanged newParentID keeps the current parent.
+// An empty newName keeps the current name; an empty or unchanged newParentID
+// keeps the current parent.
 func (c *Client) MoveFile(ctx context.Context, fileID, newName, currentParentID, newParentID string) (*driveapi.File, error) {
 	meta := &driveapi.File{}
 	if newName != "" {

@@ -37,8 +37,8 @@ var syncCmd = &cobra.Command{
 			Confirm: confirmDeletes,
 		}
 		res, err := drive.C().Sync(cmd.Context(), params)
-		// Cancellation is reported as a warning and exit 130, never a fatal — even
-		// when it surfaced as an error from a tree walk mid-build.
+		// Check cancellation first: it can surface as an error from a mid-build tree
+		// walk, but must still be a warning + exit 130, never a fatal.
 		if cmd.Context().Err() != nil {
 			u.PrintWarn("cancelled — partial state remains", nil)
 			os.Exit(u.ExitCancelled)
@@ -60,8 +60,6 @@ var syncCmd = &cobra.Command{
 	},
 }
 
-// confirmDeletes is the §5.7 gate: --for-ai refuses without --yes (same policy as
-// purge/trash empty); human mode prints the delete list and requires a typed yes.
 func confirmDeletes(deletes []drive.Item) (bool, error) {
 	u.PrintWarn(fmt.Sprintf("%d item(s) on the destination are not on the source and will be deleted:", len(deletes)), nil)
 	for _, d := range deletes {

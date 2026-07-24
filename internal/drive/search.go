@@ -12,9 +12,6 @@ import (
 	driveapi "google.golang.org/api/drive/v3"
 )
 
-// SearchOptions holds the parameters for a server-side search. Query matches file
-// names by default; Content switches to full-text. In restricts to a folder (raw
-// remote arg, honoring --id). Created/Modified use the shared time-spec grammar.
 type SearchOptions struct {
 	Query    string
 	In       string
@@ -29,12 +26,10 @@ type SearchOptions struct {
 	Sort     string
 }
 
-// errStopPaging halts Pages once the result budget is met. It is a typed sentinel
-// (matched with errors.Is), replacing the old fragile "limit reached" string match.
+// Returned to stop Pages early at the limit; filtered with errors.Is, not a real error.
 var errStopPaging = errors.New("stop paging")
 
-// Search executes a server-side search. Size filters apply client-side (Drive has
-// no size operator); paging stops as soon as the limit budget is met.
+// Size filters apply client-side — Drive has no size query operator.
 func (c *Client) Search(ctx context.Context, opts SearchOptions) ([]*driveapi.File, error) {
 	conds := []string{"trashed = false"}
 	if opts.Query != "" {
@@ -173,8 +168,7 @@ func sortOrder(s string) (string, error) {
 	}
 }
 
-// ParseHumanSize parses a human size like "10MB", "1.5g", "500" (bytes) into a byte
-// count. Units are binary (1024-based) to match the display formatter.
+// Units are binary (1024-based) to match the display formatter.
 func ParseHumanSize(s string) (int64, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {

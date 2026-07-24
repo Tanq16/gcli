@@ -18,9 +18,7 @@ import (
 	driveapi "google.golang.org/api/drive/v3"
 )
 
-// DownloadFile fetches a regular (non-Workspace) file to localPath through an
-// atomic .part temp + rename, verifying the MD5 as it streams and stamping the
-// remote mtime on success. An interrupted transfer leaves no truncated file.
+// The atomic .part + rename ensures an interrupted download never leaves a truncated file.
 func (c *Client) DownloadFile(ctx context.Context, f *driveapi.File, localPath string, prog *ByteProgress) error {
 	if err := os.MkdirAll(filepath.Dir(localPath), 0o755); err != nil {
 		return err
@@ -51,8 +49,7 @@ func (c *Client) DownloadFile(ctx context.Context, f *driveapi.File, localPath s
 		err = errors.New("md5 mismatch after download")
 	}
 	if err != nil {
-		// The discarded file's streamed bytes were already counted live; roll them
-		// back so a failed download never inflates the reported byte total.
+		// These bytes were counted live as they streamed; roll them back so a failed download never inflates the byte total.
 		if prog != nil {
 			prog.doneBytes.Add(-n)
 		}
@@ -69,10 +66,7 @@ func (c *Client) DownloadFile(ctx context.Context, f *driveapi.File, localPath s
 	return nil
 }
 
-// ExportFile exports a Workspace file to localPath in the given format (or the
-// per-type default when format is empty), appending the format's extension when
-// missing. Exports have no checksum and no reliable size, so no MD5 or byte
-// weighting is applied.
+// Exports carry no checksum and no reliable size, so unlike DownloadFile there is no MD5 verify or byte weighting.
 func (c *Client) ExportFile(ctx context.Context, f *driveapi.File, localPath, format string, prog *ByteProgress) error {
 	mimeType, ext, err := exportTarget(f, format)
 	if err != nil {
@@ -119,9 +113,6 @@ func (c *Client) exportTo(ctx context.Context, f *driveapi.File, exportMIME, loc
 	return nil
 }
 
-// Cat streams a remote file's bytes to out with no local file involved. Regular
-// files stream via alt=media; Workspace files via export (10 MB API cap surfaces
-// as a clear error). A folder target is a usage error.
 func (c *Client) Cat(ctx context.Context, remoteArg, format string, out io.Writer) error {
 	f, err := c.ResolveArg(ctx, remoteArg)
 	if err != nil {
@@ -161,9 +152,6 @@ func (c *Client) Cat(ctx context.Context, remoteArg, format string, out io.Write
 	return err
 }
 
-// Download fetches a remote file or folder to a local path. A folder becomes an
-// all-creates reverse plan run through the shared worker pool; Workspace files
-// inside a walk are exported and counted, shortcuts are handled per §4.6.
 func (c *Client) Download(ctx context.Context, remoteArg, localArg, format string) (*TransferResult, error) {
 	f, err := c.ResolveArg(ctx, remoteArg)
 	if err != nil {
@@ -243,9 +231,7 @@ func (c *Client) downloadFolder(ctx context.Context, folder *driveapi.File, loca
 	return &TransferResult{Files: int(prog.doneFiles.Load()), Bytes: prog.doneBytes.Load(), Skipped: skipped, Errors: errs}, nil
 }
 
-// collectRemote walks a remote folder into a flat download plan. Duplicate and
-// case-fold-colliding names get " (n)" suffixes; folder-shortcuts are reported
-// and never recursed (cycle safety); file-shortcuts resolve one hop.
+// Folder-shortcuts are never recursed (cycle safety) and file-shortcuts resolve only one hop.
 func (c *Client) collectRemote(ctx context.Context, folder *driveapi.File, root, localDir, format string, items *[]downloadItem, skipped *[]string) error {
 	files, err := c.ListFolder(ctx, folder)
 	if err != nil {
@@ -286,9 +272,7 @@ func (c *Client) collectRemote(ctx context.Context, folder *driveapi.File, root,
 	return nil
 }
 
-// destDir picks the local root for a folder download: nested under the remote
-// folder's name when the local argument is an existing directory (cp -r shape),
-// otherwise the argument itself.
+// An existing-directory localArg nests under the remote folder's name (cp -r semantics); otherwise localArg is the root verbatim.
 func destDir(localArg, remoteName string) string {
 	if fi, err := os.Stat(localArg); err == nil && fi.IsDir() {
 		return filepath.Join(localArg, remoteName)
@@ -296,9 +280,6 @@ func destDir(localArg, remoteName string) string {
 	return localArg
 }
 
-// destFile picks the local path for a single-file download: inside the directory
-// when localArg names one, otherwise localArg verbatim. ext (a Workspace export
-// extension) is appended when missing.
 func destFile(localArg, remoteName, ext string) string {
 	if fi, err := os.Stat(localArg); err == nil && fi.IsDir() {
 		name := remoteName
@@ -313,9 +294,7 @@ func destFile(localArg, remoteName, ext string) string {
 	return localArg
 }
 
-// dedupName returns a filesystem-unique name within used, inserting " (n)" before
-// the extension on collision. Comparison folds case on case-insensitive
-// filesystems (macOS, Windows) so case-only differences also get suffixed.
+// Comparison folds case on case-insensitive filesystems (macOS, Windows) so case-only differences also collide and get suffixed.
 func dedupName(used map[string]bool, name string) string {
 	if key := foldKey(name); !used[key] {
 		used[key] = true
@@ -346,8 +325,6 @@ func relTo(root, p string) string {
 	return p
 }
 
-// exportTarget resolves the export MIME type and extension for a Workspace file,
-// honoring an explicit --format override over the per-type default.
 func exportTarget(f *driveapi.File, format string) (mimeType, ext string, err error) {
 	if format == "" {
 		return ExportMIME(f.MimeType), ExportExtension(f.MimeType), nil

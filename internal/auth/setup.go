@@ -13,7 +13,7 @@ import (
 	u "github.com/tanq16/gcli/utils"
 )
 
-// ErrAborted signals a user-cancelled wizard; the caller treats it as a clean no-op.
+// The caller treats a cancelled wizard as a clean no-op, not a failure.
 var ErrAborted = errors.New("setup cancelled")
 
 var projectIDRe = regexp.MustCompile(`^[a-z][a-z0-9-]{4,28}[a-z0-9]$`)

@@ -85,7 +85,6 @@ var unshareCmd = &cobra.Command{
 	},
 }
 
-// validateUnshare enforces that exactly one of --with/--anyone/--all is given.
 func validateUnshare(emails []string, anyone, all bool) error {
 	n := 0
 	if len(emails) > 0 {

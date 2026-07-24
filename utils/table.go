@@ -24,9 +24,7 @@ var (
 			Foreground(lipgloss.ANSIColor(8))
 )
 
-// PrintTable renders a table. AI and debug modes emit a lossless markdown table
-// (never truncated); human mode renders a lipgloss box bounded to the terminal
-// width by shrinking the widest column first.
+// AI/debug get a lossless markdown table (never truncated); human mode is bounded to terminal width.
 func PrintTable(headers []string, rows [][]string) {
 	if GlobalForAIFlag || GlobalDebugFlag {
 		printMarkdownTable(headers, rows)
@@ -64,8 +62,7 @@ func printMarkdownTable(headers []string, rows [][]string) {
 	}
 }
 
-// escapeCells makes cell values safe for a single markdown table row: pipes are
-// escaped and newlines are flattened to a literal \n so a row never breaks.
+// Escape pipes and flatten newlines so a cell never breaks its markdown row.
 func escapeCells(cells []string) []string {
 	escaped := make([]string, len(cells))
 	for i, cell := range cells {
@@ -86,8 +83,7 @@ func padRow(row []string, n int) []string {
 	return out
 }
 
-// truncateToWidth cuts s to at most max display columns (CJK/emoji aware),
-// appending an ellipsis when it shortens. Width 0 or less yields "".
+// max is display columns, not runes (CJK/emoji aware).
 func truncateToWidth(s string, max int) string {
 	if max <= 0 {
 		return ""
@@ -109,9 +105,6 @@ func truncateToWidth(s string, max int) string {
 	return b.String() + "…"
 }
 
-// boundTable normalizes rows to the header count and, when the estimated table
-// width exceeds maxWidth, shrinks the widest column repeatedly (truncating its
-// cells) until it fits or every column has hit the floor.
 func boundTable(headers []string, rows [][]string, maxWidth int) ([]string, [][]string) {
 	n := len(headers)
 	if n == 0 {

@@ -13,9 +13,6 @@ var driveFlags struct {
 	shared  bool
 }
 
-// DriveCmd is the parent command for all Google Drive operations. Its
-// PersistentPreRun builds the injected drive.Client from auth + the persistent
-// flags; leaf commands register themselves via their own init().
 var DriveCmd = &cobra.Command{
 	Use:   "drive",
 	Short: "Google Drive file operations",

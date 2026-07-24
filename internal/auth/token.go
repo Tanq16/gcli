@@ -44,8 +44,7 @@ type AboutResult struct {
 	TrashBytes int64
 }
 
-// SaveToken persists token as a storedToken, recording the granted scopes and,
-// best-effort, the account email so `whoami` can report them offline.
+// Records granted scopes and, best-effort, the account email so whoami reports them offline.
 func SaveToken(ctx context.Context, config *oauth2.Config, token *oauth2.Token) error {
 	st := &storedToken{Token: *token}
 	st.Scopes = scopesFromToken(token, config)
@@ -102,8 +101,7 @@ func loadToken() (*storedToken, error) {
 	return &st, nil
 }
 
-// missingScopes returns the required scopes absent from have. An empty have (a
-// grandfathered legacy token) is handled by the caller, which skips the check.
+// An empty have is a grandfathered legacy token; the caller skips the scope check for it.
 func missingScopes(required, have []string) []string {
 	var missing []string
 	for _, r := range required {

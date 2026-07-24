@@ -14,9 +14,7 @@ import (
 	"google.golang.org/api/googleapi"
 )
 
-// UploadFile creates a new file under parentID from localPath, streaming it in
-// resumable chunks with server-side checksum verification. The reader is opened
-// inside the retry closure so every attempt starts at offset 0.
+// The reader is opened inside the retry closure so every attempt restarts at offset 0.
 func (c *Client) UploadFile(ctx context.Context, localPath, parentID string, prog *ByteProgress) (*driveapi.File, error) {
 	info, err := os.Stat(localPath)
 	if err != nil {
@@ -57,9 +55,7 @@ func (c *Client) UploadFile(ctx context.Context, localPath, parentID string, pro
 	return file, nil
 }
 
-// UpdateFile overwrites an existing file's content in place; the prior content
-// becomes a Drive revision. keepRevision pins the resulting head revision so
-// Drive never auto-prunes it.
+// The prior content becomes a Drive revision; keepRevision pins the head revision so Drive never auto-prunes it.
 func (c *Client) UpdateFile(ctx context.Context, fileID, localPath string, keepRevision bool, prog *ByteProgress) (*driveapi.File, error) {
 	info, err := os.Stat(localPath)
 	if err != nil {
@@ -99,8 +95,7 @@ func (c *Client) UpdateFile(ctx context.Context, fileID, localPath string, keepR
 	return file, nil
 }
 
-// TouchFile sets a file's modifiedTime without transferring content — the sync
-// OpTouch primitive that aligns mtimes when contents already match.
+// TouchFile updates modifiedTime without transferring content — sync's OpTouch, for aligning mtimes when contents already match.
 func (c *Client) TouchFile(ctx context.Context, fileID string, mtime time.Time) error {
 	return gapi.RetryErr(ctx, func() error {
 		meta := &driveapi.File{ModifiedTime: mtime.UTC().Format(time.RFC3339Nano)}
@@ -120,9 +115,7 @@ func uploadMediaOptions(localPath string) []googleapi.MediaOption {
 	return opts
 }
 
-// Upload copies a local file or folder to a remote destination with cp -r
-// semantics: it overwrites same-named files in place and creates what is missing,
-// but never deletes remote-only entries.
+// Upload has cp -r semantics: overwrite same-named files in place and create what is missing, but never delete remote-only entries.
 func (c *Client) Upload(ctx context.Context, localPath, remoteArg string, keepRevision bool) (*TransferResult, error) {
 	info, err := os.Stat(localPath)
 	if err != nil {
@@ -253,8 +246,6 @@ func (c *Client) uploadFolder(ctx context.Context, localRoot, remoteArg string, 
 	return &TransferResult{Files: int(prog.doneFiles.Load()), Bytes: prog.doneBytes.Load(), Errors: errs}, nil
 }
 
-// putFile dispatches a single local file to create-or-overwrite based on a
-// pre-resolved existing target ID.
 func (c *Client) putFile(ctx context.Context, localPath, parentID, existingID string, keepRevision bool, prog *ByteProgress) error {
 	if existingID != "" {
 		_, err := c.UpdateFile(ctx, existingID, localPath, keepRevision, prog)
@@ -264,9 +255,7 @@ func (c *Client) putFile(ctx context.Context, localPath, parentID, existingID st
 	return err
 }
 
-// uploadTarget finds the same-named non-folder child under parentID for
-// in-place overwrite: "" to create, an ID to update. Multiple duplicates are an
-// ambiguity — interactive callers prompt, batch callers get an error.
+// Returns "" to create or an existing ID to overwrite; multiple duplicates prompt interactive callers and error batch ones.
 func (c *Client) uploadTarget(ctx context.Context, name, parentID string, cor corpus, interactive bool) (string, error) {
 	q := fmt.Sprintf("name = '%s' and '%s' in parents and trashed = false and mimeType != '%s'", escapeQuery(name), parentID, folderMIME)
 	files, err := c.listQuery(ctx, cor, q, 100)
@@ -289,8 +278,6 @@ func (c *Client) uploadTarget(ctx context.Context, name, parentID string, cor co
 	return f.Id, nil
 }
 
-// folderFiles lists (and caches) the non-folder children of a remote folder,
-// grouped by name, for overwrite-by-name resolution during a folder upload.
 func (c *Client) folderFiles(ctx context.Context, cache map[string]map[string][]*driveapi.File, parentID string, cor corpus) (map[string][]*driveapi.File, error) {
 	if m, ok := cache[parentID]; ok {
 		return m, nil

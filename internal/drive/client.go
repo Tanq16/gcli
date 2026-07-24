@@ -11,17 +11,14 @@ import (
 	"google.golang.org/api/option"
 )
 
-// Options carries the drive-level persistent flags into the client. They are set
-// once at Init and never mutated afterward — the deliberate replacement for the
-// scattered SharedMode package global.
+// Options is set once at Init and never mutated afterward — the deliberate
+// replacement for the scattered SharedMode package global.
 type Options struct {
 	Workers int
 	Shared  bool
 	ByID    bool
 }
 
-// Client is the injected Drive client. All Drive operations are methods on it,
-// taking ctx as the first parameter; pure decision logic stays as free functions.
 type Client struct {
 	svc   *driveapi.Service
 	opts  Options
@@ -30,8 +27,6 @@ type Client struct {
 
 var client *Client
 
-// Init builds the process-wide Client from an authenticated HTTP client and the
-// resolved options. It is called once from the drive command's PersistentPreRun.
 func Init(httpClient *http.Client, opts Options) error {
 	svc, err := driveapi.NewService(context.Background(), option.WithHTTPClient(httpClient))
 	if err != nil {
@@ -45,8 +40,8 @@ func Init(httpClient *http.Client, opts Options) error {
 	return nil
 }
 
-// C returns the initialized Client. It panics if Init was never called, which can
-// only happen through a programming error (a command bypassing the drive PreRun).
+// C panics if Init was never called, which can only happen through a programming
+// error (a command bypassing the drive PreRun).
 func C() *Client {
 	if client == nil {
 		panic("drive.C() called before drive.Init()")
@@ -86,9 +81,8 @@ func (p *pathCache) set(key string, e cacheEntry) {
 	p.m[key] = e
 }
 
-// invalidatePrefix drops every cache entry whose key path has prefix as an ancestor
-// segment (or equals it). Mutating operations call this so stale path→ID mappings
-// never survive a move/delete/create along that path.
+// Mutating operations call this so stale path→ID mappings never survive a
+// move/delete/create along that path.
 func (p *pathCache) invalidatePrefix(prefix string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -102,8 +96,7 @@ func (p *pathCache) invalidatePrefix(prefix string) {
 	}
 }
 
-// InvalidatePath removes cache entries at or below the given remote path. Callers
-// pass the plain path (no corpus prefix); both corpora are cleared.
+// Callers pass the plain path (no corpus prefix); both corpora are cleared.
 func (c *Client) InvalidatePath(path string) {
 	c.cache.invalidatePrefix(cleanPath(path))
 }

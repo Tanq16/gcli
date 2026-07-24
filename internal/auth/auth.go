@@ -26,8 +26,7 @@ import (
 
 var requiredScopes = []string{driveapi.DriveScope, gmail.GmailModifyScope}
 
-// ErrLoginNeedsBrowser is returned when the loopback flow is requested under
-// --for-ai; the caller maps it to a usage exit and points at the manual flow.
+// Returned when the loopback flow is requested under --for-ai; the caller maps it to a usage exit.
 var ErrLoginNeedsBrowser = errors.New("interactive login needs a browser — run 'gcli login --manual' (paste-code flow, works over piped stdin) or set GCLI_CLIENT_ID/GCLI_CLIENT_SECRET/GCLI_REFRESH_TOKEN")
 
 func ConfigDir() string {

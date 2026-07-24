@@ -13,9 +13,8 @@ func trashFields() googleapi.Field {
 	return "nextPageToken, files(id, name, mimeType, size, modifiedTime, trashedTime, parents, trashed)"
 }
 
-// RestoreFile untrashes a file. ForceSendFields is required because false is
-// Trashed's zero value; without it omitempty drops the field and the untrash
-// silently no-ops.
+// ForceSendFields is required: false is Trashed's zero value, so omitempty would
+// drop the field and the untrash would silently no-op.
 func (c *Client) RestoreFile(ctx context.Context, fileID string) (*driveapi.File, error) {
 	f, err := gapi.Retry(ctx, func() (*driveapi.File, error) {
 		meta := &driveapi.File{Trashed: false, ForceSendFields: []string{"Trashed"}}
@@ -27,7 +26,6 @@ func (c *Client) RestoreFile(ctx context.Context, fileID string) (*driveapi.File
 	return f, nil
 }
 
-// ListTrashed returns trashed items sorted folders-first then alphabetical.
 func (c *Client) ListTrashed(ctx context.Context) ([]*driveapi.File, error) {
 	var out []*driveapi.File
 	err := c.svc.Files.List().Q("trashed = true").Fields(trashFields()).PageSize(1000).
@@ -43,8 +41,6 @@ func (c *Client) ListTrashed(ctx context.Context) ([]*driveapi.File, error) {
 	return out, nil
 }
 
-// FindTrashed resolves a trashed item by name for restore. Ambiguous names prompt
-// (human) or return a candidate-list error (--for-ai), consistent with §4.4.
 func (c *Client) FindTrashed(ctx context.Context, name string) (*driveapi.File, error) {
 	files, err := c.listQuery(ctx, corpus{}, fmt.Sprintf("trashed = true and name = '%s'", escapeQuery(name)), 100)
 	if err != nil {
@@ -56,7 +52,6 @@ func (c *Client) FindTrashed(ctx context.Context, name string) (*driveapi.File, 
 	return c.chooseDuplicate(name, files)
 }
 
-// EmptyTrash permanently deletes every trashed item.
 func (c *Client) EmptyTrash(ctx context.Context) error {
 	return gapi.RetryErr(ctx, func() error {
 		return gapi.HandleError(c.svc.Files.EmptyTrash().Context(ctx).Do())

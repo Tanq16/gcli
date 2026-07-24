@@ -44,9 +44,7 @@ func (c *Client) listAll(ctx context.Context, cor corpus, q string) ([]*driveapi
 	}
 }
 
-// ListFolder returns all non-trashed children of a folder, sorted folders-first
-// then alphabetical. The corpus is derived from the folder so shared-drive
-// children list correctly.
+// The corpus is derived from the folder so shared-drive children list correctly.
 func (c *Client) ListFolder(ctx context.Context, folder *driveapi.File) ([]*driveapi.File, error) {
 	files, err := c.listAll(ctx, corpusForFile(folder), fmt.Sprintf("'%s' in parents and trashed = false", folder.Id))
 	if err != nil {
@@ -56,7 +54,6 @@ func (c *Client) ListFolder(ctx context.Context, folder *driveapi.File) ([]*driv
 	return files, nil
 }
 
-// ListSharedWithMe returns the top-level "shared with me" items.
 func (c *Client) ListSharedWithMe(ctx context.Context) ([]*driveapi.File, error) {
 	files, err := c.listAll(ctx, corpus{}, "sharedWithMe = true and trashed = false")
 	if err != nil {
@@ -83,12 +80,10 @@ func (c *Client) listDrives(ctx context.Context) ([]*driveapi.Drive, error) {
 	}
 }
 
-// ListSharedDrives returns the shared drives the user can access.
 func (c *Client) ListSharedDrives(ctx context.Context) ([]*driveapi.Drive, error) {
 	return c.listDrives(ctx)
 }
 
-// CreateFolder creates a single folder named under parentID.
 func (c *Client) CreateFolder(ctx context.Context, name, parentID string) (*driveapi.File, error) {
 	meta := &driveapi.File{Name: name, Parents: []string{parentID}, MimeType: folderMIME}
 	f, err := gapi.Retry(ctx, func() (*driveapi.File, error) {
@@ -100,7 +95,6 @@ func (c *Client) CreateFolder(ctx context.Context, name, parentID string) (*driv
 	return f, nil
 }
 
-// findOrCreateFolder returns an existing folder by name under parentID, or creates it.
 func (c *Client) findOrCreateFolder(ctx context.Context, name, parentID string, cor corpus) (*driveapi.File, error) {
 	q := fmt.Sprintf("name = '%s' and '%s' in parents and trashed = false and mimeType = '%s'", escapeQuery(name), parentID, folderMIME)
 	files, err := c.listQuery(ctx, cor, q, 2)
@@ -113,9 +107,6 @@ func (c *Client) findOrCreateFolder(ctx context.Context, name, parentID string, 
 	return c.CreateFolder(ctx, name, parentID)
 }
 
-// mkdirStart determines where an mkdir walk begins: the parent to create under,
-// its corpus, the folder names still to create, and (for a bare ByID target) the
-// already-existing folder itself.
 func (c *Client) mkdirStart(ctx context.Context, arg string) (parentID string, cor corpus, segs []string, existing *driveapi.File, err error) {
 	if c.opts.ByID {
 		id, suffix := splitLeadingID(arg)
@@ -146,8 +137,6 @@ func (c *Client) mkdirStart(ctx context.Context, arg string) (parentID string, c
 	return "root", corpus{}, all, nil, nil
 }
 
-// MkdirP creates every folder along a remote argument (mkdir -p), honoring
-// --shared and --id grafting, and returns the deepest folder.
 func (c *Client) MkdirP(ctx context.Context, arg string) (*driveapi.File, error) {
 	parentID, cor, segs, existing, err := c.mkdirStart(ctx, arg)
 	if err != nil {

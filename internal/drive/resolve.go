@@ -11,9 +11,8 @@ import (
 	driveapi "google.golang.org/api/drive/v3"
 )
 
-// corpus captures the resolution namespace for child listings. A non-empty
-// driveID means the walk is inside a shared drive and every files.list must
-// carry corpora=drive + driveId; My Drive and shared-with-me leave it empty.
+// A non-empty driveID means the walk is inside a shared drive, so every files.list
+// must carry corpora=drive + driveId; My Drive and shared-with-me leave it empty.
 type corpus struct {
 	driveID string
 }
@@ -40,9 +39,8 @@ func usageErr(format string, a ...any) error {
 	return &resolveError{fmt.Sprintf(format, a...), u.ExitUsage}
 }
 
-// escapeQuery escapes a value for interpolation into a Drive query string. Order
-// matters: backslashes first, then single quotes, so an embedded quote is not
-// double-escaped.
+// Order matters: backslashes first, then single quotes, so an embedded quote is
+// not double-escaped.
 func escapeQuery(s string) string {
 	s = strings.ReplaceAll(s, `\`, `\\`)
 	s = strings.ReplaceAll(s, `'`, `\'`)
@@ -67,8 +65,6 @@ func cleanPath(p string) string {
 	return strings.Join(pathSegments(p), "/")
 }
 
-// splitLeadingID splits an --id argument into its leading Drive ID and the
-// remaining path suffix (empty when the argument is a bare ID).
 func splitLeadingID(arg string) (id, suffix string) {
 	arg = strings.TrimLeft(arg, "/")
 	if i := strings.IndexByte(arg, '/'); i >= 0 {
@@ -126,8 +122,7 @@ func (c *Client) getByID(ctx context.Context, id string) (*driveapi.File, error)
 	return f, nil
 }
 
-// getResolved fetches a file by ID, hopping a shortcut exactly once so callers
-// always see the real target (§4.4/§4.6).
+// getResolved hops a shortcut exactly once so callers always see the real target (§4.4/§4.6).
 func (c *Client) getResolved(ctx context.Context, id string) (*driveapi.File, error) {
 	f, err := c.getByID(ctx, id)
 	if err != nil {
@@ -208,8 +203,6 @@ func (c *Client) resolveSharedRoot(ctx context.Context, name string) (*driveapi.
 	return c.chooseDuplicate(name, matches)
 }
 
-// ResolvePath walks a remote path segment-by-segment to its file, honoring
-// --shared for the first segment and caching each resolved ancestor.
 func (c *Client) ResolvePath(ctx context.Context, path string) (*driveapi.File, error) {
 	segs := pathSegments(path)
 	prefix := c.cachePrefix()
@@ -273,7 +266,6 @@ func (c *Client) ResolvePath(ctx context.Context, path string) (*driveapi.File, 
 	return nil, notFoundErr("could not resolve '%s'", path)
 }
 
-// ResolveParent resolves the parent folder of a path, returning its ID and the base name.
 func (c *Client) ResolveParent(ctx context.Context, path string) (string, string, error) {
 	segs := pathSegments(path)
 	if len(segs) == 0 {
@@ -295,9 +287,6 @@ func (c *Client) ResolveParent(ctx context.Context, path string) (string, string
 	return parent.Id, segs[len(segs)-1], nil
 }
 
-// ResolveArg resolves a user remote argument to an existing file, applying --id
-// grafting (leading ID resolved and shortcut-hopped; suffix descended) when ByID
-// is set, or plain path resolution otherwise.
 func (c *Client) ResolveArg(ctx context.Context, arg string) (*driveapi.File, error) {
 	if !c.opts.ByID {
 		return c.ResolvePath(ctx, arg)
@@ -326,8 +315,7 @@ func (c *Client) ResolveArg(ctx context.Context, arg string) (*driveapi.File, er
 }
 
 // ResolveArgPath returns the canonical absolute path for a remote argument that
-// may not yet exist (mkdir/move destinations). Under ByID the leading ID is
-// resolved to its absolute path and the suffix grafted on.
+// may not yet exist (mkdir/move destinations).
 func (c *Client) ResolveArgPath(ctx context.Context, arg string) (string, error) {
 	if !c.opts.ByID {
 		return cleanPath(arg), nil
@@ -376,9 +364,6 @@ func (c *Client) ResolveArgParent(ctx context.Context, arg string) (string, stri
 	return parent.Id, segs[len(segs)-1], nil
 }
 
-// ResolveIDToPath reconstructs the absolute remote path of a file ID by walking
-// its parents chain, stopping at My Drive root or a shared-drive root. Each
-// ancestor lookup is one metadata get; shortcuts are hopped once first.
 func (c *Client) ResolveIDToPath(ctx context.Context, id string) (string, error) {
 	f, err := c.getResolved(ctx, id)
 	if err != nil {
@@ -407,10 +392,9 @@ func (c *Client) ResolveIDToPath(ctx context.Context, id string) (string, error)
 	return strings.Join(names, "/"), nil
 }
 
-// ResolveParentPaths resolves the absolute path of each file's first parent,
-// caching by parent ID so repeated parents cost one lookup. It returns the
-// parent-ID→"/path" map and false when any parent failed to resolve, so a
-// caller can warn once instead of per row.
+// ResolveParentPaths caches by parent ID so repeated parents cost one lookup, and
+// returns false when any parent failed to resolve so a caller can warn once
+// instead of per row.
 func (c *Client) ResolveParentPaths(ctx context.Context, files []*driveapi.File) (map[string]string, bool) {
 	paths := make(map[string]string)
 	allResolved := true

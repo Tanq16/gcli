@@ -23,9 +23,8 @@ import (
 )
 
 const (
-	// trashDirName is the reverse-delete recovery bin. Any directory with this name
-	// is pruned from the local walk unconditionally so the bin is never uploaded,
-	// mirror-deleted, or recursively re-trashed.
+	// trashDirName is the reverse-delete recovery bin, pruned from the local walk
+	// unconditionally so it is never uploaded, mirror-deleted, or recursively re-trashed.
 	trashDirName = ".trash.gcli"
 	// modifyWindow tolerates the mtime precision gap between local filesystems
 	// (often 1s) and Drive (ms) so an unchanged file is not endlessly re-hashed.
@@ -35,10 +34,9 @@ const (
 	remoteListLimit = 8
 )
 
-// Entry is a single file or directory in a sync tree. RelPath is slash-separated
-// relative to the sync root; MD5 is populated for remote files from the listing
-// and lazily computed for local files only when the size/mtime fast path is
-// inconclusive.
+// RelPath is slash-separated relative to the sync root; MD5 is populated for remote
+// files from the listing and lazily computed for local files only when the
+// size/mtime fast path is inconclusive.
 type Entry struct {
 	RelPath string
 	Size    int64
@@ -47,9 +45,8 @@ type Entry struct {
 	ID      string
 }
 
-// Tree is a flat view of a directory hierarchy. Files and Dirs are both keyed by
-// rel path, which makes the planner a pure function over two maps and removes the
-// nested-tree/localHint corruption class of the old model.
+// Tree is a flat view of a directory hierarchy; Files and Dirs are both keyed by
+// rel path (not ID).
 type Tree struct {
 	Files map[string]Entry
 	Dirs  map[string]Entry
@@ -69,9 +66,8 @@ const (
 	OpDelete
 )
 
-// Item is one planned action. Src is the source-side entry (zero for deletes),
-// Dst the destination-side entry (zero for creates). Op is direction-agnostic;
-// the executor interprets it per direction.
+// Src is the source-side entry (zero for deletes), Dst the destination-side entry
+// (zero for creates). Op is direction-agnostic; the executor interprets it per direction.
 type Item struct {
 	Op      Op
 	RelPath string
@@ -79,9 +75,8 @@ type Item struct {
 	Dst     Entry
 }
 
-// Plan is the reconciled set of actions. MkDirs are shallowest-first; Files holds
-// creates/updates/touches; Deletes holds dest-only files and the topmost dest-only
-// dirs; Skipped lists unsyncable entries (workspace-native, shortcuts, symlinks).
+// MkDirs are shallowest-first; Deletes holds dest-only files and the topmost
+// dest-only dirs. Skipped lists unsyncable entries (workspace-native, shortcuts, symlinks).
 type Plan struct {
 	MkDirs  []string
 	Files   []Item
@@ -89,10 +84,10 @@ type Plan struct {
 	Skipped []string
 }
 
-// FileAction decides what to do for a file present on both sides. It takes local
-// and remote explicitly (never src/dst) so it is direction-agnostic: the caller
-// always passes the local-tree entry as local and the remote-tree entry as remote.
-// hashLocal is invoked only in the size-equal, mtime-drifted tiebreak.
+// FileAction takes local and remote explicitly (never src/dst) so it is
+// direction-agnostic: the caller always passes the local-tree entry as local and the
+// remote-tree entry as remote. hashLocal is invoked only in the size-equal,
+// mtime-drifted tiebreak.
 func FileAction(local, remote Entry, hashLocal func() (string, error)) (Op, error) {
 	if local.Size != remote.Size {
 		return OpUpdate, nil
@@ -110,10 +105,8 @@ func FileAction(local, remote Entry, hashLocal func() (string, error)) (Op, erro
 	return OpUpdate, nil
 }
 
-// BuildPlan reconciles two trees into a Plan. It is pure: hashLocal resolves the
-// local MD5 of a rel path for the FileAction tiebreak, and skipped is passed
-// through to Plan.Skipped for reporting. reverse swaps which tree is the source,
-// but the local-tree entry is always handed to FileAction as its local argument.
+// BuildPlan reconciles two trees into a Plan. reverse swaps which tree is the
+// source, but the local-tree entry is always handed to FileAction as its local argument.
 func BuildPlan(local, remote *Tree, reverse bool, hashLocal func(rel string) (string, error), skipped []string) (*Plan, error) {
 	plan := &Plan{Skipped: skipped}
 	src, dst := local, remote
@@ -170,9 +163,8 @@ func BuildPlan(local, remote *Tree, reverse bool, hashLocal func(rel string) (st
 	return plan, nil
 }
 
-// hasAncestorIn reports whether any strict ancestor directory of path is in set —
-// the delete-minimization test that collapses a dest-only subtree to its topmost
-// deleted directory (remote trash and local os.RemoveAll are both recursive).
+// hasAncestorIn is the delete-minimization test that collapses a dest-only subtree
+// to its topmost deleted directory (remote trash and local os.RemoveAll are both recursive).
 func hasAncestorIn(p string, set map[string]bool) bool {
 	parts := strings.Split(p, "/")
 	for i := 1; i < len(parts); i++ {
@@ -206,8 +198,6 @@ func baseName(rel string) string {
 	return rel
 }
 
-// parseIgnore flattens repeated/comma-joined --ignore values into individual glob
-// patterns.
 func parseIgnore(patterns []string) []string {
 	var out []string
 	for _, p := range patterns {
@@ -220,8 +210,7 @@ func parseIgnore(patterns []string) []string {
 	return out
 }
 
-// shouldIgnore matches an entry's slash rel path and its basename against the glob
-// patterns; a matching directory prunes its whole subtree at the call site.
+// A directory matched by shouldIgnore has its whole subtree pruned at the call site.
 func shouldIgnore(rel string, patterns []string) bool {
 	base := path.Base(rel)
 	for _, pat := range patterns {
@@ -240,9 +229,8 @@ type namedID struct {
 	id   string
 }
 
-// collisions detects duplicate names, and (when caseFold) case-insensitive name
-// collisions, within one parent's children. Mirror semantics over ambiguous names
-// is undefined, so the run is refused pre-flight rather than silently picking one.
+// Mirror semantics over ambiguous names is undefined, so collisions lets the run be
+// refused pre-flight rather than silently picking one.
 func collisions(items []namedID, caseFold bool) []string {
 	var out []string
 	seen := map[string]namedID{}
@@ -281,10 +269,8 @@ func computeLocalMD5(path string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
-// buildLocalTree walks a local directory into a flat Tree, recording both files
-// and dirs with size and mtime but no MD5 (the headline fast-path optimization).
-// The .trash.gcli bin is pruned unconditionally; symlinks are skipped and returned
-// as reported paths; ignore globs prune subtrees.
+// buildLocalTree records size and mtime but no MD5 — the fast-path optimization that
+// avoids hashing every local file up front.
 func buildLocalTree(ctx context.Context, root string, ignore []string) (*Tree, []string, error) {
 	tree := newTree()
 	var symlinks []string
@@ -340,10 +326,8 @@ type remoteDir struct {
 	rel string
 }
 
-// buildRemoteTree lists a remote folder breadth-first, each level's folders listed
-// concurrently. Workspace-native files and shortcuts are counted into skipped and
-// never keyed into the tree (so they are never mirror-deleted); duplicate and
-// case-fold-colliding names fail the run pre-flight before anything is mutated.
+// buildRemoteTree lists breadth-first, folders per level concurrently. Workspace-native
+// files and shortcuts are never keyed into the tree, so they are never mirror-deleted.
 func (c *Client) buildRemoteTree(ctx context.Context, root *driveapi.File, ignore []string, reverse bool) (*Tree, []string, error) {
 	tree := newTree()
 	var skipped, preflight []string
@@ -417,10 +401,9 @@ func parseDriveTime(s string) time.Time {
 	return time.Time{}
 }
 
-// SyncParams carries a single sync invocation. Local and Remote are always in
-// that order regardless of direction; Reverse flips data flow only. Confirm is the
-// delete-gate, invoked with the pending deletes when the plan has any and the run
-// is not pre-approved by Yes.
+// Local and Remote are always in that order regardless of direction; Reverse flips
+// data flow only. Confirm is the delete-gate, called with pending deletes unless the
+// run is pre-approved by Yes.
 type SyncParams struct {
 	Local   string
 	Remote  string
@@ -432,10 +415,9 @@ type SyncParams struct {
 	Confirm func(deletes []Item) (bool, error)
 }
 
-// SyncResult reports the outcome. Plan is always populated (it is the sole output
-// of a dry run); Aborted is set when the delete gate was declined. Deleted counts
-// remote trashes or local moves-to-.trash.gcli; LocalTrashed is the reverse subset
-// that drives the recovery tip.
+// Plan is always populated (the sole output of a dry run). Deleted counts remote
+// trashes or local moves-to-.trash.gcli, never permanent deletes; LocalTrashed is the
+// reverse subset that drives the recovery tip.
 type SyncResult struct {
 	Plan         *Plan
 	DryRun       bool
@@ -456,10 +438,9 @@ func isNotFound(err error) bool {
 	return errors.As(err, &coded) && coded.ExitCode() == u.ExitNotFound
 }
 
-// Sync mirrors a local directory/file to a remote one (or the reverse). It runs
-// the strict phase order: pre-flight (resolve, type-match, backup, dup checks),
-// tree build + plan, delete gate, then MkDirs → transfers → deletes. Deletes are
-// recoverable on both sides (Drive trash / .trash.gcli).
+// Sync runs a strict phase order: pre-flight (resolve, type-match, backup, dup
+// checks), tree build + plan, delete gate, then MkDirs → transfers → deletes. Deletes
+// are recoverable on both sides (Drive trash / .trash.gcli).
 func (c *Client) Sync(ctx context.Context, p SyncParams) (*SyncResult, error) {
 	localInfo, localErr := os.Stat(p.Local)
 	if localErr != nil && !os.IsNotExist(localErr) {
@@ -623,10 +604,10 @@ func (c *Client) syncFolder(ctx context.Context, p SyncParams, remoteFile *drive
 	return res, nil
 }
 
-// backupDest renames an existing destination to <name>.bak so a fresh mirror is
-// written alongside it. The rename moves the whole tree out of the destination
-// path before the mirror runs, so unlike rsync's --backup there is no protect-rule
-// interplay with the same run's deletes — the .bak can never be swept.
+// backupDest renames an existing destination to <name>.bak. The rename moves the
+// whole tree out of the destination path before the mirror runs, so unlike rsync's
+// --backup there is no protect-rule interplay with the same run's deletes — the .bak
+// can never be swept.
 func (c *Client) backupDest(ctx context.Context, p SyncParams, remoteFile *driveapi.File) error {
 	if p.Reverse {
 		bak := filepath.Clean(p.Local) + ".bak"
@@ -774,7 +755,6 @@ func countTransfer(res *SyncResult, op Op, bytes int64) {
 	}
 }
 
-// syncExec carries the resolved execution context for the folder phase executor.
 type syncExec struct {
 	reverse    bool
 	localRoot  string
@@ -962,8 +942,8 @@ func pathExists(p string) bool {
 	return err == nil
 }
 
-// trashRoot is the .trash.gcli bin in the invocation directory. Reverse deletes
-// land here, preserving each orphan's path relative to the local sync root.
+// trashRoot is the .trash.gcli bin in the invocation (working) directory, not the
+// sync root.
 func trashRoot() (string, error) {
 	wd, err := os.Getwd()
 	if err != nil {
@@ -972,9 +952,8 @@ func trashRoot() (string, error) {
 	return filepath.Join(wd, trashDirName), nil
 }
 
-// trashDest places rel under trashRoot, preserving subdirectories so same-basename
-// orphans never collide; on an existing target it suffixes " (n)" before the
-// extension. exists is injected so the collision logic is testable without a disk.
+// trashDest preserves subdirectories so same-basename orphans never collide. exists
+// is injected so the collision logic is testable without a disk.
 func trashDest(root, rel string, exists func(string) bool) string {
 	dest := filepath.Join(root, rel)
 	if !exists(dest) {
@@ -990,8 +969,7 @@ func trashDest(root, rel string, exists func(string) bool) string {
 	}
 }
 
-// moveToTrash relocates an orphan into the recovery bin, falling back to a
-// copy+remove when os.Rename fails across a filesystem boundary.
+// moveToTrash falls back to copy+remove when os.Rename fails across a filesystem boundary.
 func moveToTrash(src, dest string) error {
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		return err

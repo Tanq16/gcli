@@ -15,8 +15,6 @@ import (
 	driveapi "google.golang.org/api/drive/v3"
 )
 
-// ListRevisions returns a file's version history (the listing half of the folded
-// revisions feature — info --revisions).
 func (c *Client) ListRevisions(ctx context.Context, fileID string) ([]*driveapi.Revision, error) {
 	var out []*driveapi.Revision
 	err := c.svc.Revisions.List(fileID).
@@ -31,9 +29,6 @@ func (c *Client) ListRevisions(ctx context.Context, fileID string) ([]*driveapi.
 	return out, nil
 }
 
-// DownloadRev fetches a single historical revision of a file to a local path
-// through the same atomic .part+rename+verify path as a normal download. It is a
-// single-file operation — folders and Workspace files are usage errors.
 func (c *Client) DownloadRev(ctx context.Context, remoteArg, localArg, revisionID string) (*TransferResult, error) {
 	f, err := c.ResolveArg(ctx, remoteArg)
 	if err != nil {
@@ -76,8 +71,7 @@ func (c *Client) downloadRevisionBody(ctx context.Context, fileID string, rev *d
 	return writeAtomic(localPath, rev.Md5Checksum, rev.ModifiedTime, resp.Body, prog)
 }
 
-// writeAtomic streams body into a .part temp, verifies MD5 when known, renames on
-// success, and stamps the source mtime — leaving no truncated file on interruption.
+// Write to a .part temp then rename, so an interrupted download leaves no truncated file.
 func writeAtomic(localPath, wantMD5, mtime string, body io.Reader, prog *ByteProgress) error {
 	if err := os.MkdirAll(filepath.Dir(localPath), 0o755); err != nil {
 		return err

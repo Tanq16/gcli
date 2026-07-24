@@ -9,8 +9,8 @@ import (
 
 var relSpecRe = regexp.MustCompile(`^([1-9][0-9]*)([mhdw])$`)
 
-// parseRelative parses a relative duration spec (units m/h/d/w). Months and years
-// are deliberately excluded — their calendar length is ambiguous.
+// Months and years are deliberately excluded from the m/h/d/w units — their
+// calendar length is ambiguous.
 func parseRelative(s string) (time.Duration, bool) {
 	m := relSpecRe.FindStringSubmatch(s)
 	if m == nil {
@@ -65,8 +65,8 @@ func badTimeSpec(s string) error {
 	return usageErr("invalid time spec %q: units are m/h/d/w or YYYY-MM-DD..YYYY-MM-DD", s)
 }
 
-// parseExpires parses a share-expiry spec. Only the relative form is accepted, and
-// the API caps expiry at one year in the future (validated client-side here).
+// Only the relative form is accepted; the API caps expiry at one year in the
+// future, validated client-side here.
 func parseExpires(s string, now time.Time) (time.Time, error) {
 	d, ok := parseRelative(strings.TrimSpace(s))
 	if !ok {

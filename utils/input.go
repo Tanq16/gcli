@@ -12,8 +12,7 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-// stdinScanner is shared across calls so sequential PromptInput/PromptPassword
-// calls each read the next line instead of draining all of stdin on the first call
+// Shared so sequential prompts each read the next line; a fresh scanner per call would buffer-read and drop the rest of stdin.
 var stdinScanner *bufio.Scanner
 
 func getStdinScanner() *bufio.Scanner {
@@ -23,8 +22,6 @@ func getStdinScanner() *bufio.Scanner {
 	return stdinScanner
 }
 
-// ReadPipedInput reads all remaining input from stdin pipe (bulk read)
-// Returns empty string if stdin is not a pipe
 func ReadPipedInput() string {
 	fi, err := os.Stdin.Stat()
 	if err != nil || fi.Mode()&os.ModeCharDevice != 0 {
@@ -38,8 +35,6 @@ func ReadPipedInput() string {
 	return strings.TrimSpace(strings.Join(lines, "\n"))
 }
 
-// ReadPipedLine reads a single line from stdin pipe (for sequential prompts)
-// Returns empty string if stdin is not a pipe or no more lines
 func ReadPipedLine() string {
 	fi, err := os.Stdin.Stat()
 	if err != nil || fi.Mode()&os.ModeCharDevice != 0 {
@@ -88,8 +83,6 @@ func (m inputModel) View() tea.View {
 	return tea.NewView(m.textInput.View())
 }
 
-// PromptInput displays an inline prompt and returns user input
-// In AI mode, reads a single line from stdin pipe instead of launching TUI
 func PromptInput(prompt string, placeholder string) (string, error) {
 	if GlobalForAIFlag {
 		return ReadPipedLine(), nil
@@ -108,8 +101,6 @@ func PromptInput(prompt string, placeholder string) (string, error) {
 	return strings.TrimSpace(finalModel.(inputModel).value), nil
 }
 
-// PromptPassword displays an inline password prompt (masked input)
-// In AI mode, reads a single line from stdin pipe instead of launching TUI
 func PromptPassword(prompt string) (string, error) {
 	if GlobalForAIFlag {
 		return ReadPipedLine(), nil
@@ -168,8 +159,6 @@ func (m textAreaModel) View() tea.View {
 	return tea.NewView(m.textarea.View() + "\n Ctrl+D to submit | Esc to cancel")
 }
 
-// PromptTextArea displays a multi-line text area seeded with initial and returns
-// the edited text. In AI mode, reads all remaining stdin pipe input instead.
 func PromptTextArea(prompt string, placeholder string, initial string) (string, error) {
 	if GlobalForAIFlag {
 		if piped := ReadPipedInput(); piped != "" {
@@ -252,9 +241,6 @@ func (m selectModel) View() tea.View {
 	return tea.NewView(b.String())
 }
 
-// PromptSelect asks the user to pick one option, returning its 0-based index or
-// -1 when cancelled. In AI mode it reads a 1-based index from stdin (invalid or
-// out-of-range input aborts to -1).
 func PromptSelect(label string, options []string) (int, error) {
 	if len(options) == 0 {
 		return -1, nil
@@ -334,9 +320,6 @@ func (m multiSelectModel) View() tea.View {
 	return tea.NewView(b.String())
 }
 
-// PromptMultiSelect asks the user to pick zero or more options, returning the
-// chosen 0-based indices as a set (nil when cancelled). In AI mode it reads a
-// comma-separated list of 1-based indices, or "none"/empty to abort.
 func PromptMultiSelect(label string, options []string) (map[int]bool, error) {
 	if len(options) == 0 {
 		return nil, nil

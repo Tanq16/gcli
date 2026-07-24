@@ -20,9 +20,7 @@ const (
 	maxRetryAfter = 2 * time.Minute
 )
 
-// Retry runs fn up to maxAttempts times, backing off between retryable failures
-// and honoring a Retry-After header when present. It always returns the last
-// error on exhaustion, and ctx cancellation during a backoff returns ctx.Err().
+// On exhaustion returns the last error; ctx cancellation during a backoff returns ctx.Err().
 func Retry[T any](ctx context.Context, fn func() (T, error)) (T, error) {
 	var zero T
 	var err error
@@ -44,7 +42,6 @@ func Retry[T any](ctx context.Context, fn func() (T, error)) (T, error) {
 	return zero, err
 }
 
-// RetryErr wraps Retry for error-only calls (delete/trash/touch).
 func RetryErr(ctx context.Context, fn func() error) error {
 	_, err := Retry(ctx, func() (struct{}, error) {
 		return struct{}{}, fn()

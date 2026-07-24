@@ -128,7 +128,7 @@ func TestEncodeSubject(t *testing.T) {
 	tests := []struct {
 		name       string
 		in         string
-		wantPass   bool // returned unchanged
+		wantPass   bool
 		wantPrefix string
 	}{
 		{"ascii passthrough", "Q3 numbers", true, ""},

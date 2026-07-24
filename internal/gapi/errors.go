@@ -19,9 +19,7 @@ const (
 	KindServer
 )
 
-// APIError is the single normalized error type for the package. It preserves the
-// original *googleapi.Error via Unwrap so callers keep the full chain, and maps
-// its Kind to the process exit code.
+// Unwrap preserves the original *googleapi.Error so callers keep the full chain.
 type APIError struct {
 	Kind Kind
 	Msg  string

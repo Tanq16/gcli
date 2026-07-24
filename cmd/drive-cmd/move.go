@@ -38,10 +38,8 @@ var moveCmd = &cobra.Command{
 	},
 }
 
-// moveDestination resolves the destination into a (parentID, newName) pair. An
-// existing folder means move-into (name unchanged); otherwise the destination's
-// parent must resolve — an unresolvable parent is a hard error, never a silent
-// in-place rename (the removed CL-03 footgun).
+// An unresolvable destination parent is a hard error, never a silent in-place
+// rename (the removed CL-03 footgun).
 func moveDestination(ctx context.Context, c *drive.Client, dst string) (string, string) {
 	if f, err := c.ResolveArg(ctx, dst); err == nil {
 		if !drive.IsFolder(f) {

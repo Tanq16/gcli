@@ -9,9 +9,7 @@ import (
 	driveapi "google.golang.org/api/drive/v3"
 )
 
-// ShareOptions carries a share grant. Emails receive user/group grants; Anyone
-// creates an anyone-with-the-link grant. Expires (relative spec) applies only to
-// user/group grants per the Drive API.
+// Expires (relative spec) applies only to user/group grants, per the Drive API.
 type ShareOptions struct {
 	Emails  []string
 	Anyone  bool
@@ -19,20 +17,17 @@ type ShareOptions struct {
 	Expires string
 }
 
-// ShareOutcome reports what a share granted plus the file's shareable link.
 type ShareOutcome struct {
 	Granted     []string
 	WebViewLink string
 }
 
-// UnshareOptions selects which grants to revoke.
 type UnshareOptions struct {
 	Emails []string
 	Anyone bool
 	All    bool
 }
 
-// ValidShareRole reports whether role is one of the file/folder roles gcli exposes.
 func ValidShareRole(role string) bool {
 	switch role {
 	case "reader", "commenter", "writer":
@@ -41,8 +36,7 @@ func ValidShareRole(role string) bool {
 	return false
 }
 
-// shareTarget resolves a remote arg to the concrete file that ACLs apply to,
-// hopping a shortcut to its target (shortcut ACLs are immutable, §4.6).
+// Hop a shortcut to its target: shortcut ACLs are immutable (§4.6).
 func (c *Client) shareTarget(ctx context.Context, remoteArg string) (*driveapi.File, error) {
 	f, err := c.ResolveArg(ctx, remoteArg)
 	if err != nil {
@@ -57,7 +51,6 @@ func (c *Client) shareTarget(ctx context.Context, remoteArg string) (*driveapi.F
 	return f, nil
 }
 
-// ListShares returns the file's permissions and its shareable link (list mode).
 func (c *Client) ListShares(ctx context.Context, remoteArg string) ([]*driveapi.Permission, string, error) {
 	f, err := c.shareTarget(ctx, remoteArg)
 	if err != nil {
@@ -70,7 +63,6 @@ func (c *Client) ListShares(ctx context.Context, remoteArg string) ([]*driveapi.
 	return perms, f.WebViewLink, nil
 }
 
-// Share grants access per opts and returns the outcome including the link.
 func (c *Client) Share(ctx context.Context, remoteArg string, opts ShareOptions) (*ShareOutcome, error) {
 	if !ValidShareRole(opts.Role) {
 		return nil, usageErr("invalid --role %q (reader, commenter, writer)", opts.Role)
@@ -111,7 +103,6 @@ func (c *Client) Share(ctx context.Context, remoteArg string, opts ShareOptions)
 	return &ShareOutcome{Granted: granted, WebViewLink: f.WebViewLink}, nil
 }
 
-// Unshare revokes the selected grants and returns human labels for what was removed.
 func (c *Client) Unshare(ctx context.Context, remoteArg string, opts UnshareOptions) ([]string, error) {
 	f, err := c.shareTarget(ctx, remoteArg)
 	if err != nil {
@@ -132,8 +123,7 @@ func (c *Client) Unshare(ctx context.Context, remoteArg string, opts UnshareOpti
 	return removed, nil
 }
 
-// matchUnshare selects the permissions to revoke: owner is never removed; --all
-// takes every non-owner grant, otherwise emails and/or the anyone grant.
+// The owner grant is never revocable and is always skipped.
 func matchUnshare(perms []*driveapi.Permission, opts UnshareOptions) []*driveapi.Permission {
 	emails := make(map[string]bool, len(opts.Emails))
 	for _, e := range opts.Emails {

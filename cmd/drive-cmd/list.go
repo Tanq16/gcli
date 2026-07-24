@@ -52,9 +52,7 @@ var listCmd = &cobra.Command{
 	},
 }
 
-// listEntries resolves the listing for a path, handling the shared-namespace root
-// (union of shared drives + shared-with-me) specially. The bool reports an empty
-// listing already communicated to the user.
+// The returned bool means the empty listing was already reported to the user.
 func listEntries(ctx context.Context, c *drive.Client, path string) ([]*driveapi.File, bool) {
 	if c.Shared() && !c.ByID() && strings.Trim(path, "/") == "" {
 		var files []*driveapi.File
@@ -95,8 +93,6 @@ func listEntries(ctx context.Context, c *drive.Client, path string) ([]*driveapi
 	return files, false
 }
 
-// fileColumns builds the ls/search table: TYPE, NAME, SIZE, MODIFIED, and ID only
-// when withID is set.
 func fileColumns(files []*driveapi.File, withID bool) ([]string, [][]string) {
 	headers := []string{"TYPE", "NAME", "SIZE", "MODIFIED"}
 	if withID {

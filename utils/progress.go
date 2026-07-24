@@ -5,10 +5,7 @@ import (
 	"time"
 )
 
-// StartProgress runs a 1s ticker that renders a live progress line via render,
-// which returns the current label and percent. The returned stop function halts
-// the ticker and clears any line in flight; a tick already rendering must not
-// print after the caller's final summary line, so stop waits for it to finish.
+// stop waits for an in-flight tick to finish, so a late render can't print after the caller's final summary line.
 func StartProgress(render func() (label string, percent int)) (stop func()) {
 	done := make(chan struct{})
 	finished := make(chan struct{})

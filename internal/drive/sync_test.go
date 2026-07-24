@@ -309,7 +309,6 @@ func TestParseIgnore(t *testing.T) {
 }
 
 func TestTrashDest(t *testing.T) {
-	// existing set simulates files already present in the trash bin.
 	existing := map[string]bool{}
 	exists := func(p string) bool { return existing[p] }
 
@@ -343,10 +342,10 @@ func TestHasAncestorIn(t *testing.T) {
 		path string
 		want bool
 	}{
-		{"a", false},    // itself is not a strict ancestor
-		{"a/b", true},   // a is an ancestor
-		{"a/b/c", true}, // a and a/b are ancestors
-		{"x/y", false},  // unrelated
+		{"a", false}, // itself is not a strict ancestor
+		{"a/b", true},
+		{"a/b/c", true},
+		{"x/y", false},
 		{"a2/b", false}, // prefix string but not path ancestor
 	}
 	for _, tt := range tests {

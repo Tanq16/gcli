@@ -61,9 +61,7 @@ func UpdateDraft(id string, opts MessageOptions) error {
 	return gapi.HandleError(err)
 }
 
-// DraftToOptions recovers editable MessageOptions from a stored draft: recipients
-// and subject from headers, the readable body, and any carried attachments. The
-// body is normalized to text so draft-edit re-composes as plain text.
+// The body is normalized to plain text so draft-edit re-composes as text/plain.
 func DraftToOptions(d *gmail.Draft) (MessageOptions, error) {
 	if d == nil || d.Message == nil {
 		return MessageOptions{}, nil

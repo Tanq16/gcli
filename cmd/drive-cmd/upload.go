@@ -32,10 +32,7 @@ var uploadCmd = &cobra.Command{
 	},
 }
 
-// reportTransfer prints the outcome of a folder/file transfer. A cancelled run
-// is a single warning + exit 130 (spec §9.4); otherwise skipped items render as
-// warnings, per-item failures as indented errors with an ExitPartial exit, or a
-// success summary.
+// A cancelled run is a single warning + exit 130 (§9.4), not a per-item error dump.
 func reportTransfer(ctx context.Context, verb string, res *drive.TransferResult) {
 	if ctx.Err() != nil {
 		u.PrintWarn("cancelled — partial state remains", nil)

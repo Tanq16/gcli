@@ -69,8 +69,6 @@ var searchCmd = &cobra.Command{
 	},
 }
 
-// searchColumns renders results with a PATH column (the parent's absolute path)
-// so unrestricted results are locatable. A parent that fails to resolve shows "-".
 func searchColumns(ctx context.Context, c *drive.Client, files []*driveapi.File, withID bool) ([]string, [][]string) {
 	headers := []string{"TYPE", "NAME", "SIZE", "MODIFIED", "PATH"}
 	if withID {

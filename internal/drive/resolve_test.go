@@ -30,7 +30,7 @@ func TestEscapeQuery(t *testing.T) {
 func TestFormatDriveTime(t *testing.T) {
 	tests := []struct {
 		name, in string
-		wantRaw  bool // true when the input is returned unchanged (unparseable)
+		wantRaw  bool
 	}{
 		{"empty", "", false},
 		{"fifteen chars no panic", "2026-07-24T10:1", true},
