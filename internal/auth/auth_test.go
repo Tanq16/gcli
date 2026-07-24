@@ -53,31 +53,6 @@ func TestValidateClientJSON(t *testing.T) {
 	}
 }
 
-func TestValidateProjectID(t *testing.T) {
-	tests := []struct {
-		name    string
-		in      string
-		wantErr bool
-	}{
-		{"valid", "my-gcli-project", false},
-		{"min length six", "abcde1", false},
-		{"too short", "ab-cd", true},
-		{"starts with digit", "1project-name", true},
-		{"ends with hyphen", "my-project-", true},
-		{"uppercase", "MyProject-Name", true},
-		{"too long", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", true},
-		{"empty", "", true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := validateProjectID(tt.in)
-			if (err != nil) != tt.wantErr {
-				t.Fatalf("validateProjectID(%q) err = %v, wantErr %v", tt.in, err, tt.wantErr)
-			}
-		})
-	}
-}
-
 func TestValidateClientID(t *testing.T) {
 	tests := []struct {
 		name    string

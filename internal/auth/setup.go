@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	u "github.com/tanq16/gcli/utils"
@@ -16,10 +15,7 @@ import (
 // The caller treats a cancelled wizard as a clean no-op, not a failure.
 var ErrAborted = errors.New("setup cancelled")
 
-var projectIDRe = regexp.MustCompile(`^[a-z][a-z0-9-]{4,28}[a-z0-9]$`)
-
 type SetupOptions struct {
-	ProjectID    string
 	ClientID     string
 	ClientSecret string
 	Overwrite    bool
@@ -49,18 +45,9 @@ func RunSetup(ctx context.Context, opts SetupOptions) error {
 		}
 	}
 
-	var clientID, clientSecret string
-	if opts.ClientID != "" && opts.ClientSecret != "" {
-		clientID = strings.TrimSpace(opts.ClientID)
-		if err := validateClientID(clientID); err != nil {
-			return err
-		}
-		clientSecret = strings.TrimSpace(opts.ClientSecret)
-	} else {
-		var err error
-		if clientID, clientSecret, err = runWizardScreens(opts); err != nil {
-			return err
-		}
+	clientID, clientSecret, err := resolveCredentials(opts)
+	if err != nil {
+		return err
 	}
 
 	u.PrintInfo(fmt.Sprintf("Client ID: %s (%d chars)", maskClientID(clientID), len(clientID)))
@@ -68,45 +55,37 @@ func RunSetup(ctx context.Context, opts SetupOptions) error {
 		return fmt.Errorf("failed to write credentials.json: %w", err)
 	}
 	u.PrintSuccess("credentials.json saved to " + credPath)
-
 	return handoff(ctx)
 }
 
-func runWizardScreens(opts SetupOptions) (clientID, clientSecret string, err error) {
-	u.PrintInfo("gcli uses your own Google OAuth client (BYO):")
-	u.PrintGeneric("  - Google caps unverified apps at 100 users, so no shared client can ship.")
-	u.PrintGeneric("  - Setup is 5 steps in the Google Cloud Console; links are provided below.")
-	u.PrintGeneric("  - The \"Google hasn't verified this app\" warning at login is EXPECTED and safe.")
-	pause("")
+func resolveCredentials(opts SetupOptions) (clientID, clientSecret string, err error) {
+	if opts.ClientID != "" && opts.ClientSecret != "" {
+		clientID = strings.TrimSpace(opts.ClientID)
+		if err = validateClientID(clientID); err != nil {
+			return "", "", err
+		}
+		return clientID, strings.TrimSpace(opts.ClientSecret), nil
+	}
+	if u.GlobalForAIFlag {
+		return "", "", errors.New("interactive setup needs a terminal — pass --client-id and --client-secret, or run 'gcli login --setup' yourself")
+	}
 
-	u.PrintInfo("Step 1/5 - Create a Google Cloud project:")
-	u.PrintGeneric("  https://console.cloud.google.com/projectcreate")
-	projectID, err := resolveInput(opts.ProjectID, "Enter your Project ID:", "my-gcli-project", validateProjectID)
+	choice, err := u.PromptSelect("Do you already have a Google OAuth client (Desktop app)?", []string{
+		"No — show me how to create one",
+		"Yes — I have the Client ID and secret",
+	})
 	if err != nil {
 		return "", "", err
 	}
+	switch choice {
+	case 0:
+		printSetupGuide()
+	case 1:
+	default:
+		return "", "", ErrAborted
+	}
 
-	u.PrintInfo("Step 2/5 - Enable the Drive and Gmail APIs:")
-	u.PrintGeneric("  https://console.cloud.google.com/apis/library/drive.googleapis.com?project=" + projectID)
-	u.PrintGeneric("  https://console.cloud.google.com/apis/library/gmail.googleapis.com?project=" + projectID)
-	pause("Press Enter once both APIs are enabled.")
-
-	u.PrintInfo("Step 3/5 - Configure the OAuth consent screen:")
-	u.PrintGeneric("  https://console.cloud.google.com/apis/credentials/consent?project=" + projectID)
-	u.PrintGeneric("  - User type: External")
-	u.PrintGeneric("  - Fill app name + support email; you can skip the scopes screen.")
-	u.PrintGeneric("  - Test users: ADD YOUR OWN EMAIL - required, or login fails with 'Access blocked'.")
-	pause("Press Enter once the consent screen is configured.")
-
-	u.PrintInfo("Step 4/5 - Publish the app to Production:")
-	u.PrintGeneric("  On the same page, click 'PUBLISH APP' (no review needed for personal use).")
-	u.PrintGeneric("  Testing-status apps auto-revoke refresh tokens every 7 days; publishing removes that.")
-	pause("Press Enter once the app is published.")
-
-	u.PrintInfo("Step 5/5 - Create the OAuth client credentials:")
-	u.PrintGeneric("  https://console.cloud.google.com/apis/credentials?project=" + projectID)
-	u.PrintGeneric("  - Application type: Desktop app  <- MUST be Desktop app, not Web application.")
-	clientID, err = resolveInput(opts.ClientID, "Enter the Client ID:", "1039....apps.googleusercontent.com", validateClientID)
+	clientID, err = resolveInput(opts.ClientID, "Paste your Client ID:", "1039....apps.googleusercontent.com", validateClientID)
 	if err != nil {
 		return "", "", err
 	}
@@ -115,6 +94,25 @@ func runWizardScreens(opts SetupOptions) (clientID, clientSecret string, err err
 		return "", "", err
 	}
 	return clientID, clientSecret, nil
+}
+
+func printSetupGuide() {
+	u.PrintInfo("One-time Google Cloud setup (~3 min in a browser), then paste the client below:")
+	u.PrintGeneric("")
+	u.PrintGeneric("1. Enable both APIs — open each link, pick or create a project, click Enable:")
+	u.PrintGeneric("     https://console.cloud.google.com/apis/library/drive.googleapis.com")
+	u.PrintGeneric("     https://console.cloud.google.com/apis/library/gmail.googleapis.com")
+	u.PrintGeneric("")
+	u.PrintGeneric("2. Consent screen — in the console search bar type \"Google Auth Platform\" and open it:")
+	u.PrintGeneric("     - Get started -> User type: External (Internal needs a Workspace org); add an app name + your email.")
+	u.PrintGeneric("     - Left nav -> Audience: keep publishing status Testing, and add YOUR email under Test users (required).")
+	u.PrintGeneric("")
+	u.PrintGeneric("3. Client — left nav -> Clients -> Create client -> Application type: Desktop app -> Create.")
+	u.PrintGeneric("     Copy the Client ID and Client secret it shows you.")
+	u.PrintGeneric("")
+	u.PrintGeneric("The \"Google hasn't verified this app\" screen at login is expected — Advanced -> Continue.")
+	u.PrintGeneric("Testing status revokes access ~weekly; to skip re-login, you can later Publish app to production (no review needed).")
+	u.PrintGeneric("")
 }
 
 func resolveInput(flagVal, prompt, placeholder string, validate func(string) error) (string, error) {
@@ -146,7 +144,7 @@ func resolveSecret(flagVal string) (string, error) {
 	if flagVal != "" {
 		return strings.TrimSpace(flagVal), nil
 	}
-	v, err := u.PromptPassword("Enter the Client Secret:")
+	v, err := u.PromptPassword("Paste your Client Secret:")
 	if err != nil {
 		return "", err
 	}
@@ -160,19 +158,9 @@ func resolveSecret(flagVal string) (string, error) {
 	return v, nil
 }
 
-func pause(msg string) {
-	if msg != "" {
-		u.PrintInfo(msg)
-	}
-	if u.GlobalForAIFlag {
-		return
-	}
-	_, _ = u.PromptInput("Press Enter to continue...", "")
-}
-
 func handoff(ctx context.Context) error {
 	if u.GlobalForAIFlag {
-		u.PrintInfo("run 'gcli login --manual' to authenticate")
+		u.PrintInfo("run 'gcli login' to authenticate")
 		return nil
 	}
 	choice, err := u.PromptSelect("Log in now?", []string{"Yes", "No"})
@@ -186,17 +174,10 @@ func handoff(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if _, err := Login(ctx, config, "default"); err != nil {
+	if _, err := Login(ctx, config); err != nil {
 		return err
 	}
 	u.PrintSuccess("authenticated successfully - token saved")
-	return nil
-}
-
-func validateProjectID(s string) error {
-	if !projectIDRe.MatchString(s) {
-		return errors.New("project ID must be 6-30 chars: a lowercase letter first, then letters/digits/hyphens, not ending in a hyphen")
-	}
 	return nil
 }
 

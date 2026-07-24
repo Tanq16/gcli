@@ -14,7 +14,7 @@ gcli is a fully command-line tool for **Google Drive** (the primary product) and
 
 | Service | Commands | Description |
 |---------|----------|-------------|
-| Auth | `login`, `login --setup`, `logout`, `whoami` | BYO OAuth (PKCE + loopback), guided setup wizard, revoke, and account/storage status |
+| Auth | `login`, `login --setup`, `logout`, `whoami` | BYO OAuth (PKCE, paste-the-redirect-URL), guided setup wizard, revoke, and account/storage status |
 | Drive | `ls` (`list`), `info`, `search` | Browse folders, inspect one item, search by name/content/type/time/size |
 | Drive | `up` (`upload`), `dl` (`download`), `cat` | Concurrent, resumable transfers; stream remote bytes to stdout |
 | Drive | `sync` | Destructive-mirror folder↔folder (or file↔file) with recoverable deletes, `--reverse`, `--backup`, `--dry-run` |
@@ -58,25 +58,27 @@ make build
 
 ## Authentication
 
-gcli uses a **bring-your-own OAuth client** (BYO). There is no shipped shared client: an embedded secret in open-source cannot stay confidential, and a single client would hit Google's 100-user unverified cap across all installs. Setup is a one-time, five-step Google Cloud task, and the built-in wizard walks you through it with deep links:
+gcli uses a **bring-your-own OAuth client** (BYO). There is no shipped shared client: an embedded secret in open-source cannot stay confidential, and a single client would hit Google's 100-user unverified cap across all installs. Setup is a one-time Google Cloud task; the wizard asks whether you already have a Desktop-app client, and if not prints a short block (two API links + the console steps) before taking your Client ID and secret:
 
 ```bash
-gcli login --setup     # guided wizard: project, APIs, consent screen, publish, Desktop-app client
-gcli login             # PKCE + 127.0.0.1 loopback (opens a browser)
-gcli login --manual    # paste-the-code flow for headless/SSH
+gcli login --setup     # guided wizard: enable APIs, consent screen, Desktop-app client
+gcli login             # opens your browser (or prints the URL); you paste the redirect URL back
 gcli whoami            # which account am I, and will a backup fit?
 gcli logout            # revoke the refresh token with Google, then delete it locally
 ```
+
+One `login` flow serves desktop and headless/SSH alike: gcli opens your browser when it can, otherwise prints the authorization URL. Either way the browser lands on a `http://127.0.0.1/?...` page that won't load — copy that address bar URL and paste it back (gcli reads the `code` straight out of it), so there is no local listener and no manual code-extraction.
 
 Credentials live in `~/.config/gcli/` (`credentials.json` = the OAuth client, `token.json` = your grant). The auth scopes are fixed and narrow: full Drive plus Gmail modify.
 
 ### Documented-forever facts (do not re-litigate)
 
-- **The "Google hasn't verified this app" warning is expected and safe.** It is your own personal client; click through it. The wizard adds your email as a test user and publishes the app so this never blocks login.
-- **Publish the app to Production during setup.** Apps left in "Testing" have their refresh tokens auto-revoked every 7 days; publishing (two clicks, no review needed for personal use) removes that limit permanently and makes the headless token path dependable.
+- **The "Google hasn't verified this app" warning is expected and safe.** It is your own personal client; at login click `Advanced → Continue`. You must add your own email under the consent screen's Test users, or login is blocked with "Access denied".
+- **A personal (non-Workspace) account must use User type "External".** "Internal" only exists inside a Google Workspace organization. The app stays in "Testing" publishing status, which is fine for personal use.
+- **"Testing" status revokes the refresh token roughly weekly.** If you would rather not re-run `gcli login` every ~7 days, click `Publish app` → In production on the consent screen (no verification/review needed for personal use); the 100-user unverified cap still applies but never matters for one person.
 - **You must create a "Desktop app" OAuth client, not "Web application."** A Web client loads but fails at redirect time; gcli detects the wrong type and tells you.
 - **API keys cannot access private Drive/Gmail data.** A key attributes quota to a project; it does not authenticate a user. Private-data calls with only a key return 401/403 unconditionally.
-- **Device-code login is impossible for gcli's scopes.** Google's device-flow allowlist excludes full `drive` and all `gmail.*`, so there is no `--device-login`; use `--manual` on headless hosts.
+- **Device-code login is impossible for gcli's scopes.** Google's device-flow allowlist excludes full `drive` and all `gmail.*`, so there is no `--device-login`; the paste-the-redirect-URL flow covers headless hosts instead.
 - **Service accounts / domain-wide delegation are not supported.** Service accounts have 0 GB owned-storage quota and cannot be a personal identity; DWD needs a Workspace org admin and is out of scope.
 
 ### Headless / non-interactive
@@ -89,7 +91,7 @@ All optional; set the pair to skip `credentials.json`, add the refresh token to 
 | `GCLI_REFRESH_TOKEN` | Token without `token.json` — fully headless with the pair above |
 | `GCLI_CONFIG_DIR` | Repoint the whole config directory (the multi-account escape hatch) |
 
-Under `--for-ai`, bare `gcli login` refuses up front (it needs a browser an agent cannot open) and points you at `gcli login --manual` (auth URL printed, code read from piped stdin) or the env vars.
+Under `--for-ai`, `gcli login` prints the authorization URL (it never tries to open a browser) and reads the pasted redirect URL — or bare code — from piped stdin; for a fully unattended agent, prefer the env vars above.
 
 ## Usage
 
@@ -97,7 +99,7 @@ The command tree:
 
 ```
 gcli                                    --debug | --for-ai   (root, mutually exclusive)
-├── login    [--manual] [--setup [--project-id --client-id --client-secret --overwrite]]
+├── login    [--setup [--client-id --client-secret --overwrite]]
 ├── logout   [--local-only]
 ├── whoami
 ├── drive    --workers/-w 4 | --id | --shared/-s            (drive-persistent)
@@ -271,7 +273,8 @@ The full canonical rename map; anything not listed is unchanged in spirit.
 
 | Old | New |
 |-----|-----|
-| `gcli login --device-login` | removed (impossible for gcli's scopes; use `--manual`) |
+| `gcli login --device-login` | removed (impossible for gcli's scopes; the paste-the-redirect-URL flow covers headless) |
+| `gcli login --manual` | removed; one `gcli login` flow (browser or printed URL) covers desktop and headless |
 | — | `gcli login --setup`, `gcli logout`, `gcli whoami` (new) |
 | `sync push --concurrency/-c N` | drive-persistent `--workers/-w N` (default 4) |
 | per-command `--id/-i <string>` | drive-persistent bool `--id` with uniform path resolution |
@@ -328,9 +331,9 @@ Every command speaks three mutually exclusive tiers, set by root flags:
 **The invisible rule:** every prompt has a flag or stdin equivalent, so `--for-ai` is fully non-interactive. Deletes take `--yes`; the login code and mail bodies read from piped stdin; ambiguity resolves via `--id`.
 
 ```bash
-# fully headless: env-var auth, piped login code, no prompts
+# fully headless: env-var auth, piped redirect URL (or bare code), no prompts
 export GCLI_CLIENT_ID=... GCLI_CLIENT_SECRET=...
-printf '%s\n' "$AUTH_CODE" | gcli login --manual --for-ai
+printf '%s\n' "$REDIRECT_URL" | gcli --for-ai login
 gcli drive sync ~/backup /backups --yes --for-ai
 gcli drive cat /reports/latest.json --for-ai | jq .
 ```

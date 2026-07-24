@@ -7,15 +7,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
-	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
-	"time"
 
 	u "github.com/tanq16/gcli/utils"
 	"golang.org/x/oauth2"
@@ -25,9 +22,6 @@ import (
 )
 
 var requiredScopes = []string{driveapi.DriveScope, gmail.GmailModifyScope}
-
-// Returned when the loopback flow is requested under --for-ai; the caller maps it to a usage exit.
-var ErrLoginNeedsBrowser = errors.New("interactive login needs a browser — run 'gcli login --manual' (paste-code flow, works over piped stdin) or set GCLI_CLIENT_ID/GCLI_CLIENT_SECRET/GCLI_REFRESH_TOKEN")
 
 func ConfigDir() string {
 	dir := os.Getenv("GCLI_CONFIG_DIR")
@@ -85,114 +79,42 @@ func validateClientJSON(data []byte) error {
 	}
 }
 
-func Login(ctx context.Context, config *oauth2.Config, mode string) (*oauth2.Token, error) {
+// The browser (or the user) lands on a 127.0.0.1 URL that won't load; the code rides in its query string, so we ask for the URL back instead of running a loopback listener — one path for desktop and headless/SSH alike.
+func Login(ctx context.Context, config *oauth2.Config) (*oauth2.Token, error) {
 	state, err := generateState()
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate state: %w", err)
 	}
-	if mode == "manual" {
-		return loginWithManual(ctx, config, state)
-	}
-	if u.GlobalForAIFlag {
-		return nil, ErrLoginNeedsBrowser
-	}
-	return loginWithCallback(ctx, config, state)
-}
-
-func loginWithCallback(ctx context.Context, config *oauth2.Config, state string) (*oauth2.Token, error) {
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return nil, fmt.Errorf("cannot start callback server: %w", err)
-	}
-	port := listener.Addr().(*net.TCPAddr).Port
-	config.RedirectURL = fmt.Sprintf("http://127.0.0.1:%d", port)
-
-	verifier := oauth2.GenerateVerifier()
-	authURL := config.AuthCodeURL(state,
-		oauth2.AccessTypeOffline, oauth2.ApprovalForce,
-		oauth2.S256ChallengeOption(verifier))
-
-	codeCh := make(chan string, 1)
-	errCh := make(chan error, 1)
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Query().Get("state") != state {
-			errCh <- errors.New("state mismatch — possible CSRF attack")
-			http.Error(w, "State mismatch", http.StatusBadRequest)
-			return
-		}
-		code := r.URL.Query().Get("code")
-		if code == "" {
-			errCh <- errors.New("no auth code in callback")
-			http.Error(w, "Missing code", http.StatusBadRequest)
-			return
-		}
-		fmt.Fprint(w, "<html><body><h2>Authentication successful!</h2><p>You can close this tab.</p></body></html>")
-		codeCh <- code
-	})
-
-	srv := &http.Server{Handler: mux}
-	go func() {
-		if err := srv.Serve(listener); err != http.ErrServerClosed {
-			errCh <- err
-		}
-	}()
-
-	u.PrintInfo("Opening browser for authentication...")
-	if err := openBrowser(authURL); err != nil {
-		srv.Close()
-		return nil, errors.New("cannot open browser — run 'gcli login --manual' for headless environments")
-	}
-	u.PrintInfo("Waiting for authorization in browser...")
-	u.PrintGeneric(authURL)
-
-	var code string
-	select {
-	case code = <-codeCh:
-	case err := <-errCh:
-		srv.Close()
-		return nil, err
-	case <-ctx.Done():
-		srv.Close()
-		return nil, ctx.Err()
-	case <-time.After(5 * time.Minute):
-		srv.Close()
-		return nil, errors.New("authentication timed out")
-	}
-	srv.Close()
-
-	token, err := config.Exchange(ctx, code, oauth2.VerifierOption(verifier))
-	if err != nil {
-		return nil, fmt.Errorf("token exchange failed: %w", err)
-	}
-	if err := SaveToken(ctx, config, token); err != nil {
-		return nil, err
-	}
-	return token, nil
-}
-
-func loginWithManual(ctx context.Context, config *oauth2.Config, state string) (*oauth2.Token, error) {
 	config.RedirectURL = "http://127.0.0.1"
-
 	verifier := oauth2.GenerateVerifier()
 	authURL := config.AuthCodeURL(state,
 		oauth2.AccessTypeOffline, oauth2.ApprovalForce,
 		oauth2.S256ChallengeOption(verifier))
 
-	u.PrintInfo("Visit this URL to authenticate:")
-	u.PrintGeneric(authURL)
-	u.PrintInfo("After authorizing, copy the 'code' parameter from the redirect URL.")
+	switch {
+	case u.GlobalForAIFlag:
+		u.PrintInfo("Visit this URL to authorize, then pipe back the redirect URL (or the code):")
+		u.PrintGeneric(authURL)
+	case canOpenBrowser() && openBrowser(authURL) == nil:
+		u.PrintInfo("Opened your browser to authorize. Approve access — it then redirects to a 127.0.0.1 page that won't load, which is expected.")
+	default:
+		u.PrintInfo("Open this URL to authorize:")
+		u.PrintGeneric(authURL)
+	}
 
-	code, err := u.PromptInput("Paste the authorization code:", "4/0Axx...")
+	raw, err := u.PromptInput("Paste the redirect URL from your browser (or just the code):", "http://127.0.0.1/?state=...&code=...")
 	if err != nil {
 		return nil, fmt.Errorf("input error: %w", err)
 	}
-	code = extractCode(code)
-	if code == "" {
-		return nil, errors.New("no code provided")
+	if parsed, perr := url.Parse(strings.TrimSpace(raw)); perr == nil {
+		if s := parsed.Query().Get("state"); s != "" && s != state {
+			return nil, errors.New("state mismatch — paste the redirect URL from the browser session you just authorized")
+		}
 	}
-
+	code := extractCode(raw)
+	if code == "" {
+		return nil, errors.New("no authorization code found in what you pasted")
+	}
 	token, err := config.Exchange(ctx, code, oauth2.VerifierOption(verifier))
 	if err != nil {
 		return nil, fmt.Errorf("token exchange failed: %w", err)
@@ -222,6 +144,16 @@ func generateState() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(b), nil
+}
+
+// Headless Linux keeps xdg-open on PATH but it silently fails to open anything, so gate on the display env rather than trusting openBrowser's exit code.
+func canOpenBrowser() bool {
+	switch runtime.GOOS {
+	case "darwin", "windows":
+		return true
+	default:
+		return os.Getenv("DISPLAY") != "" || os.Getenv("WAYLAND_DISPLAY") != ""
+	}
 }
 
 func openBrowser(target string) error {
