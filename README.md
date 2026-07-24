@@ -343,6 +343,6 @@ gcli drive cat /reports/latest.json --for-ai | jq .
 - **Restore an old file version** with `download --revision <id>` then `upload` (which overwrites the head by default). List revision IDs with `info --revisions`. There is no separate restore API.
 - **Duplicate remote names on download** get non-destructive ` (1)`, ` (2)` suffixes; the same applies to case-fold collisions on macOS/Windows filesystems.
 - **Shortcuts** are labeled `shortcut` in listings and never silently followed: file-shortcuts resolve one hop on download; folder-shortcuts are reported but not recursed; sync skips them.
-- **Google Workspace files** (Docs/Sheets/Slides) have no raw bytes — download/`cat` export them (`--format`), and sync counts and skips them rather than deleting.
+- **Google Workspace files** (Docs/Sheets/Slides) have no raw bytes — download/`cat` export them (`--format`), and sync counts and skips them rather than deleting. `download --revision` is **not supported** for them (the API can't export a specific historical version); `info --revisions` still lists their history, and `--format` exports the current version.
 - **Retries are built in.** Transient API errors and rate limits are retried with backoff; only after retries are exhausted does a command exit 7.
 - Use `GCLI_CONFIG_DIR` to keep separate config directories per account — that is the supported multi-account mechanism.
