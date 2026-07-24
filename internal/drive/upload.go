@@ -47,6 +47,10 @@ func (c *Client) UploadFile(ctx context.Context, localPath, parentID string, pro
 			}
 			return nil, err
 		}
+		if prog != nil {
+			// ProgressUpdater only fires for multi-chunk resumable uploads, so single-chunk (<=16MiB) uploads report 0 without this reconcile.
+			prog.doneBytes.Add(info.Size() - attempt)
+		}
 		return file, nil
 	})
 	if err != nil {
@@ -86,6 +90,10 @@ func (c *Client) UpdateFile(ctx context.Context, fileID, localPath string, keepR
 				prog.doneBytes.Add(-attempt)
 			}
 			return nil, err
+		}
+		if prog != nil {
+			// ProgressUpdater only fires for multi-chunk resumable uploads, so single-chunk (<=16MiB) uploads report 0 without this reconcile.
+			prog.doneBytes.Add(info.Size() - attempt)
 		}
 		return file, nil
 	})

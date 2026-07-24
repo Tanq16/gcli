@@ -2,6 +2,7 @@ package utils
 
 import (
 	"bufio"
+	"errors"
 	"os"
 	"strconv"
 	"strings"
@@ -10,7 +11,15 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"golang.org/x/term"
 )
+
+// Guard the TUI prompts: bubbletea leaks a raw "/dev/tty: no such device" error under cron/CI/ssh-without-a-tty, so refuse cleanly and point at the non-interactive path.
+var errNoTTY = errors.New("no interactive terminal — re-run with --for-ai and pipe the value, or skip the prompt with the relevant flag")
+
+func interactive() bool {
+	return term.IsTerminal(int(os.Stdin.Fd()))
+}
 
 // Shared so sequential prompts each read the next line; a fresh scanner per call would buffer-read and drop the rest of stdin.
 var stdinScanner *bufio.Scanner
@@ -87,6 +96,9 @@ func PromptInput(prompt string, placeholder string) (string, error) {
 	if GlobalForAIFlag {
 		return ReadPipedLine(), nil
 	}
+	if !interactive() {
+		return "", errNoTTY
+	}
 
 	ti := textinput.New()
 	ti.Placeholder = placeholder
@@ -104,6 +116,9 @@ func PromptInput(prompt string, placeholder string) (string, error) {
 func PromptPassword(prompt string) (string, error) {
 	if GlobalForAIFlag {
 		return ReadPipedLine(), nil
+	}
+	if !interactive() {
+		return "", errNoTTY
 	}
 
 	ti := textinput.New()
@@ -165,6 +180,9 @@ func PromptTextArea(prompt string, placeholder string, initial string) (string, 
 			return piped, nil
 		}
 		return initial, nil
+	}
+	if !interactive() {
+		return "", errNoTTY
 	}
 
 	PrintInfo(prompt)
@@ -252,6 +270,9 @@ func PromptSelect(label string, options []string) (int, error) {
 		}
 		return n - 1, nil
 	}
+	if !interactive() {
+		return -1, errNoTTY
+	}
 
 	m := selectModel{label: label, options: options, chosen: -1}
 	finalModel, err := tea.NewProgram(m).Run()
@@ -337,6 +358,9 @@ func PromptMultiSelect(label string, options []string) (map[int]bool, error) {
 			}
 		}
 		return selected, nil
+	}
+	if !interactive() {
+		return nil, errNoTTY
 	}
 
 	m := multiSelectModel{label: label, options: options, selected: make(map[int]bool)}
