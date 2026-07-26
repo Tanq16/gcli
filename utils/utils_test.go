@@ -176,18 +176,18 @@ func TestBoundTableProtected(t *testing.T) {
 		}
 	})
 
-	t.Run("terminal narrower than the protected column", func(t *testing.T) {
-		_, out := boundTable(headers, [][]string{row}, 40, protected)
-		for i, cell := range out[0] {
-			if i == 4 {
-				continue
-			}
-			if w := lipgloss.Width(cell); w > colFloor {
-				t.Fatalf("column %d width = %d, want every unprotected column at the floor before ID shrinks", i, w)
-			}
+	// Squeezing the other columns cannot make the ID fit at width 40, and a truncated ID
+	// is worthless, so the table overflows intact rather than mangling every column.
+	t.Run("unfittable protected column overflows instead of truncating", func(t *testing.T) {
+		outHeaders, out := boundTable(headers, [][]string{row}, 40, protected)
+		if out[0][4] != driveID {
+			t.Fatalf("ID = %q, want the full %q", out[0][4], driveID)
 		}
-		if lipgloss.Width(out[0][4]) <= colFloor {
-			t.Fatalf("ID shrank past the other columns: %q", out[0][4])
+		if !slices.Equal(outHeaders, headers) {
+			t.Fatalf("headers = %v, want them left intact at %v", outHeaders, headers)
+		}
+		if !slices.Equal(out[0], row) {
+			t.Fatalf("row = %v, want it left intact at %v", out[0], row)
 		}
 	})
 

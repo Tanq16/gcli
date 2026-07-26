@@ -129,12 +129,10 @@ func protectedCols(headers []string, keepFull []string) []bool {
 
 const colFloor = 4
 
-// includeProtected is the last resort: a protected column yields width only once
-// every other column sits at the floor.
-func shrinkTarget(widths []int, protected []bool, includeProtected bool) int {
+func shrinkTarget(widths []int, protected []bool) int {
 	target := -1
 	for i, w := range widths {
-		if w <= colFloor || (!includeProtected && i < len(protected) && protected[i]) {
+		if w <= colFloor || (i < len(protected) && protected[i]) {
 			continue
 		}
 		if target == -1 || w > widths[target] {
@@ -142,6 +140,21 @@ func shrinkTarget(widths []int, protected []bool, includeProtected bool) int {
 		}
 	}
 	return target
+}
+
+// A protected column is never truncated, so when the protected columns alone cannot fit,
+// shrinking the rest buys nothing and only destroys their content: overflow instead and
+// let the terminal wrap, which keeps an ID or a link copy-pasteable.
+func fitAchievable(widths []int, protected []bool, overhead, maxWidth int) bool {
+	sum := overhead
+	for i, w := range widths {
+		if i < len(protected) && protected[i] {
+			sum += w
+		} else {
+			sum += min(w, colFloor)
+		}
+	}
+	return sum <= maxWidth
 }
 
 func boundTable(headers []string, rows [][]string, maxWidth int, protected []bool) ([]string, [][]string) {
@@ -167,11 +180,11 @@ func boundTable(headers []string, rows [][]string, maxWidth int, protected []boo
 		}
 		return sum
 	}
+	if slices.Contains(protected, true) && !fitAchievable(widths, protected, overhead, maxWidth) {
+		return headers, rows
+	}
 	for total() > maxWidth {
-		widest := shrinkTarget(widths, protected, false)
-		if widest == -1 {
-			widest = shrinkTarget(widths, protected, true)
-		}
+		widest := shrinkTarget(widths, protected)
 		if widest == -1 {
 			break
 		}
