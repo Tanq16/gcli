@@ -41,8 +41,7 @@ func ListThreads(ctx context.Context, label string, unread bool, count int64) ([
 	return fetchThreadSummaries(ctx, resp.Threads)
 }
 
-// Gmail's labelIds parameter takes opaque IDs (a user label is "Label_7"), so a sidebar
-// name has to be translated or the call 400s with no detail.
+// Gmail's labelIds parameter takes opaque IDs (a user label is "Label_7"), so a sidebar name must be translated or the call 400s.
 func resolveLabelID(ctx context.Context, want string) (string, error) {
 	resp, err := Service.Users.Labels.List("me").Context(ctx).Do()
 	if err != nil {

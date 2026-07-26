@@ -21,8 +21,7 @@ const (
 	maxRetryAfter = 2 * time.Minute
 )
 
-// Transfers that verify their payload report a mismatch with this so the retry loop
-// re-fetches instead of failing the item.
+// Reported by transfers that verify their payload, so the retry loop re-fetches instead of failing the item.
 var ErrChecksumMismatch = errors.New("checksum mismatch after transfer")
 
 // On exhaustion returns the last error; ctx cancellation during a backoff returns ctx.Err().
@@ -54,8 +53,7 @@ func RetryErr(ctx context.Context, fn func() error) error {
 	return err
 }
 
-// Mid-stream body failures (resets, broken pipes, truncated reads, corrupt payloads) are
-// transient, so they retry alongside rate limits and 5xx; callers restart at offset 0.
+// Mid-stream body failures (resets, broken pipes, truncated reads, corrupt payloads) are transient too, and callers restart at offset 0.
 func retryable(err error) bool {
 	if err == nil || errors.Is(err, context.Canceled) {
 		return false

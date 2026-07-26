@@ -18,8 +18,7 @@ var driveFlags struct {
 var DriveCmd = &cobra.Command{
 	Use:   "drive",
 	Short: "Google Drive file operations",
-	// Runnable so cobra reaches ValidateArgs; a bare parent returns ErrHelp first and a
-	// mistyped subcommand would print help and exit 0.
+	// Runnable so cobra reaches ValidateArgs; a bare parent returns ErrHelp first, so a mistyped subcommand would print help and exit 0.
 	Args: cobra.NoArgs,
 	Run:  func(cmd *cobra.Command, args []string) { _ = cmd.Help() },
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
@@ -29,7 +28,7 @@ var DriveCmd = &cobra.Command{
 		}
 		client, err := auth.GetHTTPClient(cmd.Context())
 		if errors.Is(err, auth.ErrNoCredentials) {
-			u.PrintFatalCode(err.Error()+"; "+auth.NoCredentialsHint, nil, u.ExitAuth)
+			u.PrintFatalCode("", auth.WithSetupHint(err), u.ExitAuth)
 		}
 		if err != nil {
 			u.PrintFatalCode("not authenticated — run 'gcli login'", err, u.ExitAuth)

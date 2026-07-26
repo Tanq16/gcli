@@ -6,9 +6,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// A parent with subcommands but no Run returns cobra's ErrHelp before ValidateArgs is
-// ever reached, so a mistyped subcommand prints help and exits 0. Dropping either the
-// Run or the Args here silently restores that.
 func TestParentCommandsRejectUnknownSubcommands(t *testing.T) {
 	for _, parent := range []*cobra.Command{MailCmd, draftsCmd} {
 		t.Run(parent.Name(), func(t *testing.T) {

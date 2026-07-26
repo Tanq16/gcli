@@ -1,4 +1,4 @@
-.PHONY: help clean build build-for build-all version fmt check
+.PHONY: help clean build build-for build-all version
 
 # =============================================================================
 # Variables
@@ -44,18 +44,6 @@ build-all: ## Build all platform binaries
 	@$(MAKE) build-for GOOS=linux GOARCH=arm64
 	@$(MAKE) build-for GOOS=darwin GOARCH=amd64
 	@$(MAKE) build-for GOOS=darwin GOARCH=arm64
-
-# =============================================================================
-# Quality
-# =============================================================================
-fmt: ## Format all Go source
-	@gofmt -l -w .
-	@echo "$(GREEN)Formatted$(NC)"
-
-check: ## Verify formatting, vet, and tests
-	@fmtout=$$(gofmt -l .); if [ -n "$$fmtout" ]; then echo "unformatted files:"; echo "$$fmtout"; exit 1; fi
-	@go vet ./...
-	@go test ./...
 
 # =============================================================================
 # Version

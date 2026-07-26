@@ -29,8 +29,7 @@ var uploadCmd = &cobra.Command{
 	},
 }
 
-// Check cancellation first: it can surface as an error from the pre-transfer tree
-// walk, but must still be a warning + exit 130, never a fatal.
+// Cancellation can arrive as err from the pre-transfer tree walk, so it is checked first to stay a warning + exit 130, never a fatal.
 func finishTransfer(ctx context.Context, verb, pastVerb string, res *drive.TransferResult, err error) {
 	if ctx.Err() != nil {
 		u.PrintWarn("cancelled — partial state remains", nil)

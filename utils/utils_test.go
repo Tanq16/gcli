@@ -33,6 +33,50 @@ func TestFlattenErr(t *testing.T) {
 	}
 }
 
+func TestHumanMsg(t *testing.T) {
+	tests := []struct {
+		name string
+		msg  string
+		err  error
+		want string
+	}{
+		{"msg and err", "upload failed", errors.New("permission denied"), "upload failed: permission denied"},
+		{"msg only", "upload failed", nil, "upload failed"},
+		{"err only", "", errors.New("no usable OAuth client; run 'gcli login --setup'"), "no usable OAuth client; run 'gcli login --setup'"},
+		{"neither", "", nil, ""},
+		{"err only keeps newlines", "", errors.New("a\nb"), "a\nb"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := humanMsg(tt.msg, tt.err); got != tt.want {
+				t.Fatalf("humanMsg(%q, %v) = %q, want %q", tt.msg, tt.err, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestAIError(t *testing.T) {
+	tests := []struct {
+		name string
+		msg  string
+		err  error
+		want string
+	}{
+		{"msg and err", "upload failed", errors.New("permission denied"), "[ERROR] upload failed: permission denied"},
+		{"msg only", "upload failed", nil, "[ERROR] upload failed"},
+		{"err only", "", errors.New("no usable OAuth client; run 'gcli login --setup'"), "[ERROR] no usable OAuth client; run 'gcli login --setup'"},
+		{"neither", "", nil, "[ERROR] "},
+		{"err only stays one line", "", errors.New("a\nb"), "[ERROR] a; b"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := aiError("[ERROR] ", tt.msg, tt.err); got != tt.want {
+				t.Fatalf("aiError(%q, %v) = %q, want %q", tt.msg, tt.err, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestProgressBarClamp(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -176,8 +220,6 @@ func TestBoundTableProtected(t *testing.T) {
 		}
 	})
 
-	// Squeezing the other columns cannot make the ID fit at width 40, and a truncated ID
-	// is worthless, so the table overflows intact rather than mangling every column.
 	t.Run("unfittable protected column overflows instead of truncating", func(t *testing.T) {
 		outHeaders, out := boundTable(headers, [][]string{row}, 40, protected)
 		if out[0][4] != driveID {
@@ -226,8 +268,8 @@ func TestExitCodeFor(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := exitCodeFor(tt.err); got != tt.want {
-				t.Fatalf("exitCodeFor(%v) = %d, want %d", tt.err, got, tt.want)
+			if got := ExitCodeFor(tt.err); got != tt.want {
+				t.Fatalf("ExitCodeFor(%v) = %d, want %d", tt.err, got, tt.want)
 			}
 		})
 	}

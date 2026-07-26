@@ -286,8 +286,7 @@ func isASCII(s string) bool {
 	return true
 }
 
-// Unescaped plain text spliced into an HTML body loses every line break, and any
-// markup-shaped run (a bare "<bob@x.com>") is swallowed.
+// Unescaped plain text spliced into an HTML body loses every line break, and any markup-shaped run (a bare "<bob@x.com>") is swallowed.
 func HTMLText(s string) string {
 	s = strings.ReplaceAll(s, "\r\n", "\n")
 	return strings.ReplaceAll(html.EscapeString(s), "\n", "<br>\n")

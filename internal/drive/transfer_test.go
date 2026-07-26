@@ -58,8 +58,6 @@ func TestByteProgressWriterCounts(t *testing.T) {
 	}
 }
 
-// Byte weighting is only honest when every size is known up front, and a
-// Workspace file has none until it is exported.
 func TestBatchTotalBytes(t *testing.T) {
 	binary := func(size int64) downloadItem { return downloadItem{file: &driveapi.File{Size: size}} }
 	export := downloadItem{file: &driveapi.File{}, export: true}
@@ -120,8 +118,6 @@ func (r *tornReader) Read(p []byte) (int, error) {
 	return n, nil
 }
 
-// A failed attempt is retried from offset 0, so any bytes it streamed must be
-// rolled back or the progress total counts them twice.
 func TestWritePart(t *testing.T) {
 	payload := []byte("hello world")
 	sum := md5.Sum(payload)

@@ -17,8 +17,7 @@ import (
 	driveapi "google.golang.org/api/drive/v3"
 )
 
-// The retry wraps the whole body transfer, not just the handshake, so a reset
-// near the end of a large file reopens the stream and rewrites .part from offset 0.
+// The retry wraps the whole body transfer, not just the handshake, so a late reset reopens the stream and rewrites .part from offset 0.
 func fetchToFile(ctx context.Context, localPath, wantMD5, mtime string, prog *ByteProgress, open func() (*http.Response, error)) error {
 	if err := os.MkdirAll(filepath.Dir(localPath), 0o755); err != nil {
 		return err
@@ -63,8 +62,7 @@ func writePart(part, wantMD5 string, body io.Reader, prog *ByteProgress) error {
 		err = gapi.ErrChecksumMismatch
 	}
 	if err != nil {
-		// These bytes were counted live as they streamed; roll them back so the
-		// retry restarting at offset 0 never double-counts them.
+		// Counted live as they streamed, so the retry restarting at offset 0 would double-count them.
 		if prog != nil {
 			prog.doneBytes.Add(-n)
 		}
@@ -173,8 +171,7 @@ type downloadItem struct {
 	exportMIME string
 }
 
-// A Workspace file has no size until it is exported, so any export in the batch
-// drops the whole thing to file-count weighting rather than a bar pegged at 100%.
+// A Workspace file has no size until it is exported, so one export drops the whole batch to file-count weighting.
 func batchTotalBytes(items []downloadItem) int64 {
 	var total int64
 	for _, it := range items {

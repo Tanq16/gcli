@@ -108,8 +108,7 @@ func BuildForwardOptions(threadID string, to []string, note string, contentType 
 		}
 	}
 
-	// ExtractBody yields plain text even for an HTML original, so everything spliced
-	// into the HTML branch has to be escaped.
+	// ExtractBody yields plain text even for an HTML original, so everything spliced into the HTML branch has to be escaped.
 	if contentType == "text/html" {
 		bodyBuf.WriteString("<div style=\"color:#555\">---------- Forwarded message ----------<br>")
 		fmt.Fprintf(&bodyBuf, "From: %s<br>", HTMLText(from))

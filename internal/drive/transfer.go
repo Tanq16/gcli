@@ -51,8 +51,7 @@ func (w byteCounter) Write(b []byte) (int, error) {
 	return len(b), nil
 }
 
-// Exports report no size, so a batch holding any of them passes totalBytes 0 and
-// falls back to file-count weighting.
+// Exports report no size, so a batch holding any of them passes totalBytes 0 and falls back to file-count weighting.
 func (p *ByteProgress) percent() int {
 	switch {
 	case p.totalBytes > 0:

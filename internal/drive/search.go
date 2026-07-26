@@ -29,8 +29,7 @@ type SearchOptions struct {
 // Returned to stop Pages early at the limit; filtered with errors.Is, not a real error.
 var errStopPaging = errors.New("stop paging")
 
-// Size is the one predicate Drive cannot express in a query, so paging runs on until
-// enough post-filter matches land; the budget stops a rare size paging an entire Drive.
+// Size is the one predicate Drive cannot express in a query, so paging runs post-filter; this caps a rare size paging an entire Drive.
 const sizeScanBudget = 10000
 
 func (c *Client) Search(ctx context.Context, opts SearchOptions) ([]*driveapi.File, error) {
@@ -122,8 +121,7 @@ func searchQuery(opts SearchOptions, folderID string, now time.Time) (string, er
 		conds = append(conds, tc)
 	}
 
-	// Extensions are alternatives, so they OR together, parenthesised because the
-	// group is joined into the outer AND chain.
+	// Extensions are alternatives, so they OR together, parenthesised because the group joins the outer AND chain.
 	var extConds []string
 	for _, ext := range opts.Ext {
 		ext = strings.TrimPrefix(strings.TrimSpace(ext), ".")

@@ -55,8 +55,7 @@ var syncCmd = &cobra.Command{
 		}
 		reportSync(res, syncFlags.reverse)
 		if len(res.Errors) > 0 {
-			// Files left correctly mirrored count as work done, so an every-item
-			// failure still reports its real cause instead of partial.
+			// Files left correctly mirrored count as work done, so an all-failed run still reports its real cause instead of partial.
 			done := res.Created + res.Updated + res.Touched + res.Deleted + res.Unchanged
 			os.Exit(drive.ItemsExitCode(done, res.Errors))
 		}
@@ -141,8 +140,7 @@ func reportSync(res *drive.SyncResult, reverse bool) {
 		moved = "downloaded"
 		deleted = "removed"
 	}
-	// A collapsed subtree is one path but many files, so the file count is spelled
-	// out whenever it exceeds the path count the delete gate listed.
+	// A collapsed subtree is one path but many files, so the file count is worth spelling out.
 	deletedPart := fmt.Sprintf("%d %s", res.Deleted, deleted)
 	if res.DeletedFiles > res.Deleted {
 		deletedPart = fmt.Sprintf("%d %s (%d file(s))", res.Deleted, deleted, res.DeletedFiles)

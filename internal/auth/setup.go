@@ -133,7 +133,7 @@ func resolveInput(flagVal, prompt, placeholder string, validate func(string) err
 			if u.GlobalForAIFlag {
 				return "", err
 			}
-			u.PrintWarn(err.Error(), nil)
+			u.PrintWarn("", err)
 			continue
 		}
 		return v, nil

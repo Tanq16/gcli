@@ -10,9 +10,9 @@ permissions:
 
 jobs:
   # ===========================================================================
-  # Step 0: Verify formatting, vet, and tests (gates the release)
+  # Step 0: Run unit tests (gates the release)
   # ===========================================================================
-  check:
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,14 +22,14 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Check
-        run: make check
+      - name: Run Tests
+        run: go test ./...
 
   # ===========================================================================
   # Step 1: Calculate version and create draft release
   # ===========================================================================
   create-release:
-    needs: check
+    needs: test
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}

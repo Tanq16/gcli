@@ -38,8 +38,7 @@ var moveCmd = &cobra.Command{
 	},
 }
 
-// Only a destination that genuinely does not exist is a rename; any other lookup
-// failure is inconclusive, and would silently move the file out of its folder.
+// Only a destination that genuinely does not exist is a rename; any other lookup failure would silently move the file out of its folder.
 func moveDestination(ctx context.Context, c *drive.Client, dst string) (string, string) {
 	f, err := c.ResolveArg(ctx, dst)
 	switch {

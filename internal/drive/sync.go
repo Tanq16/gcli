@@ -87,8 +87,7 @@ type Plan struct {
 	Unchanged int
 }
 
-// DeleteFileCount is the blast radius of a delete list, which is not len(deletes):
-// a dest-only subtree collapses to a single recursive directory delete.
+// The blast radius is not len(deletes): a dest-only subtree collapses to a single recursive directory delete.
 func DeleteFileCount(deletes []Item) int {
 	n := 0
 	for _, it := range deletes {
@@ -125,9 +124,8 @@ func FileAction(local, remote Entry, hashLocal func() (string, error)) (Op, erro
 	return OpUpdate, nil
 }
 
-// Protected holds rel paths of unsyncable entries dropped from their own tree; nothing
-// on the other side may mirror-delete them. SameLocal reports whether two rel paths name
-// one local file — how a case-only difference presents — and is set for reverse runs only.
+// Protected holds rel paths of unsyncable entries dropped from their own tree; nothing on the other side may
+// mirror-delete them. SameLocal, set for reverse runs only, reports whether two rel paths name one local file.
 type PlanOptions struct {
 	Reverse   bool
 	HashLocal func(rel string) (string, error)
@@ -136,8 +134,7 @@ type PlanOptions struct {
 	SameLocal func(a, b string) bool
 }
 
-// Reverse swaps which tree is the source, but the local-tree entry is always handed to
-// FileAction as its local argument.
+// Reverse swaps which tree is the source, but FileAction always receives the local-tree entry as its local argument.
 func BuildPlan(local, remote *Tree, opts PlanOptions) (*Plan, error) {
 	plan := &Plan{Skipped: opts.Skipped}
 	src, dst := local, remote
@@ -197,8 +194,7 @@ func BuildPlan(local, remote *Tree, opts PlanOptions) (*Plan, error) {
 		if _, ok := srcDirFold.lookup(rel); ok {
 			continue
 		}
-		// The delete is recursive, so a directory holding an unsyncable entry must
-		// survive; its other dest-only children still fall to the file loop below.
+		// The delete is recursive, so a directory holding an unsyncable entry must survive; its other dest-only children still fall to the file loop.
 		if opts.Protected[rel] || protectedDirs[rel] {
 			continue
 		}
@@ -231,8 +227,7 @@ func BuildPlan(local, remote *Tree, opts PlanOptions) (*Plan, error) {
 	return plan, nil
 }
 
-// foldIdx resolves a rel path to an entry differing only by case. same is the authority,
-// so a case-sensitive volume still plans two same-named entries as distinct.
+// same is the authority, so a case-sensitive volume still plans two same-named entries as distinct.
 type foldIdx struct {
 	byFold map[string]string
 	same   func(a, b string) bool
@@ -270,9 +265,8 @@ func ancestorsOf(paths map[string]bool) map[string]bool {
 	return out
 }
 
-// The delete-minimization test that collapses a dest-only subtree to its topmost deleted
-// directory (remote trash and local os.RemoveAll are both recursive). Walking
-// shallowest-first makes the first hit the collapse target.
+// Collapses a dest-only subtree to its topmost deleted directory, since remote trash and local
+// os.RemoveAll are both recursive; walking shallowest-first makes the first hit that target.
 func topAncestorIn(p string, set map[string]bool) (string, bool) {
 	parts := strings.Split(p, "/")
 	for i := 1; i < len(parts); i++ {
@@ -365,9 +359,8 @@ func collisions(items []namedID, caseFold bool) []string {
 	return out
 }
 
-// Probes the volume instead of guessing from GOOS, which misses a vfat/exfat/casefold
-// mount under Linux and over-reports on a case-sensitive macOS volume. Files that do not
-// exist yet are the point of the pull, so the deepest existing ancestor is what answers.
+// GOOS is the wrong signal: it misses a vfat/exfat/casefold mount under Linux and over-reports on
+// a case-sensitive macOS volume. The pull's target may not exist yet, so its deepest ancestor answers.
 func caseInsensitiveDir(dir string) bool {
 	for {
 		if fi, err := os.Stat(dir); err == nil && fi.IsDir() {
@@ -394,8 +387,7 @@ func caseInsensitiveDir(dir string) bool {
 	return err == nil
 }
 
-// Ground truth for a case-only name difference on any platform, so it needs no probe:
-// distinct inodes on a case-sensitive volume simply answer false.
+// Ground truth on any platform, so it needs no probe: distinct inodes on a case-sensitive volume simply answer false.
 func sameLocalFile(root, a, b string) bool {
 	ai, err := os.Lstat(filepath.Join(root, filepath.FromSlash(a)))
 	if err != nil {
@@ -479,9 +471,8 @@ type remoteDir struct {
 	rel string
 }
 
-// buildRemoteTree lists breadth-first, folders per level concurrently. Workspace-native
-// files, shortcuts and ignored entries are dropped from the tree and returned separately;
-// the caller must pass both to PlanOptions.Protected, or the other side mirror-deletes them.
+// Workspace-native files, shortcuts and ignored entries are dropped from the tree and returned
+// separately; the caller must pass both to PlanOptions.Protected, or the other side mirror-deletes them.
 func (c *Client) buildRemoteTree(ctx context.Context, root *driveapi.File, ignore []string, caseFold bool) (*Tree, []string, []string, error) {
 	tree := newTree()
 	var skipped, ignored, preflight []string
@@ -649,8 +640,7 @@ func (c *Client) syncFolder(ctx context.Context, p SyncParams, remoteFile *drive
 	if p.Reverse {
 		destExists = localExists
 	}
-	// A dry run must reach the plan without renaming or creating anything, and clearing
-	// destExists alone reproduces the plan a real --backup run would print.
+	// A dry run must reach the plan without renaming anything, and clearing destExists alone reproduces what a real --backup run would print.
 	backup := p.Backup && destExists
 	if backup {
 		destExists = false
@@ -716,9 +706,8 @@ func (c *Client) syncFolder(ctx context.Context, p SyncParams, remoteFile *drive
 		protected[rel] = true
 		skipped = append(skipped, rel+" (symlink)")
 	}
-	// Ignored entries are protected but not reported as skipped: the user excluded them
-	// deliberately, and a dest-only directory holding only ignored files must not collapse
-	// into a recursive delete that takes them with it.
+	// Ignored entries are protected but not reported as skipped: the user excluded them deliberately,
+	// yet a dest-only directory holding only ignored files must not collapse into a recursive delete.
 	for _, rel := range slices.Concat(localIgnored, remoteIgnored) {
 		protected[rel] = true
 	}
@@ -844,8 +833,7 @@ func (c *Client) syncFile(ctx context.Context, p SyncParams, remoteFile *driveap
 		return res, nil
 	}
 
-	// The backup is deferred past the dry-run return; clearing destExists above already
-	// gave the plan the OpCreate a real --backup run produces.
+	// Deferred past the dry-run return; clearing destExists above already gave the plan the OpCreate a real --backup run produces.
 	var dest uploadDest
 	if backup {
 		parentID, name, berr := c.backupDest(ctx, p, remoteFile)
@@ -883,8 +871,7 @@ func (c *Client) syncFile(ctx context.Context, p SyncParams, remoteFile *driveap
 	return res, nil
 }
 
-// uploadDest is the push destination captured before a --backup rename; the zero value
-// means it is still to be resolved from the user's argument.
+// Captured before a --backup rename; the zero value means the destination is still to be resolved from the user's argument.
 type uploadDest struct {
 	parentID string
 	name     string

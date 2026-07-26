@@ -40,50 +40,32 @@ func usageErr(format string, a ...any) error {
 	return &resolveError{fmt.Sprintf(format, a...), u.ExitUsage}
 }
 
-type exitCoder interface {
-	error
-	ExitCode() int
-}
-
-func exitCodeOf(err error) int {
-	if coded, ok := errors.AsType[exitCoder](err); ok {
-		return coded.ExitCode()
-	}
-	if errors.Is(err, context.Canceled) {
-		return u.ExitCancelled
-	}
-	return u.ExitGeneric
-}
-
 // IsNotFound is the only safe test for absence; every other failure is inconclusive.
 func IsNotFound(err error) bool {
-	return err != nil && exitCodeOf(err) == u.ExitNotFound
+	return err != nil && u.ExitCodeFor(err) == u.ExitNotFound
 }
 
-// BatchExitCode picks the exit code for a multi-argument command. Partial is reserved
-// for mixed outcomes; an all-failed run reports the cause its errors agree on.
+// Partial is reserved for mixed outcomes; an all-failed run reports the cause its errors agree on.
 func BatchExitCode(succeeded int, errs []error) int {
 	if len(errs) == 0 {
 		return 0
 	}
-	// A user abort outranks the work that already landed, so Ctrl+C reports 130 whether it
-	// lands mid-batch or mid-transfer rather than looking like items failed on their own.
+	// A user abort outranks the work that already landed, so Ctrl+C reports 130 rather than looking like items failed on their own.
 	if slices.ContainsFunc(errs, func(err error) bool { return errors.Is(err, context.Canceled) }) {
 		return u.ExitCancelled
 	}
 	if succeeded > 0 {
 		return u.ExitPartial
 	}
-	code := exitCodeOf(errs[0])
+	code := u.ExitCodeFor(errs[0])
 	for _, err := range errs[1:] {
-		if exitCodeOf(err) != code {
+		if u.ExitCodeFor(err) != code {
 			return u.ExitPartial
 		}
 	}
 	return code
 }
 
-// ItemsExitCode is BatchExitCode over ItemError, which unwraps to the classified cause.
 func ItemsExitCode(succeeded int, errs []ItemError) int {
 	plain := make([]error, len(errs))
 	for i, e := range errs {
@@ -197,7 +179,6 @@ func (c *Client) listQuery(ctx context.Context, cor corpus, q string, pageSize i
 	return res.Files, nil
 }
 
-// Human mode prompts; --for-ai returns a candidate-list error directing to --id.
 // Ambiguity is a usage failure, never not-found, which callers read as "safe to create".
 func (c *Client) chooseDuplicate(name string, files []*driveapi.File) (*driveapi.File, error) {
 	if len(files) == 1 {
@@ -445,8 +426,7 @@ func (c *Client) ResolveIDToPath(ctx context.Context, id string) (string, error)
 	return strings.Join(names, "/"), nil
 }
 
-// ResolveParentPaths caches by parent ID, failures included, and reports false when any
-// parent failed so a caller can warn once instead of per row.
+// Reports false when any parent failed to resolve, so a caller can warn once instead of per row.
 func (c *Client) ResolveParentPaths(ctx context.Context, files []*driveapi.File) (map[string]string, bool) {
 	return resolveParentPaths(files, func(id string) (string, error) { return c.ResolveIDToPath(ctx, id) })
 }

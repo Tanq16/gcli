@@ -110,8 +110,7 @@ func (timeoutErr) Error() string   { return "timeout" }
 func (timeoutErr) Timeout() bool   { return true }
 func (timeoutErr) Temporary() bool { return true }
 
-// The mid-stream shapes matter most: a body read that dies late arrives as a
-// *net.OpError with Timeout() false, wrapped in *url.Error by the http client.
+// A body read that dies late arrives as a *net.OpError with Timeout() false, wrapped in *url.Error by the http client.
 func TestRetryable(t *testing.T) {
 	reset := &net.OpError{Op: "read", Net: "tcp", Err: os.NewSyscallError("read", syscall.ECONNRESET)}
 	tests := []struct {

@@ -19,8 +19,7 @@ var whoamiCmd = &cobra.Command{
 
 		account := status.Account
 		storage := ""
-		// Without usable local auth, About would blame the network for a condition
-		// the CREDENTIALS/TOKEN lines below already state.
+		// Without usable local auth, About would blame the network for what the CREDENTIALS/TOKEN lines below already state.
 		if status.CredentialSource != "" && status.CredentialSource != "none" && status.HasToken {
 			if about, err := auth.About(cmd.Context()); err != nil {
 				u.PrintWarn("could not reach Google for account/storage details", err)

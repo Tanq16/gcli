@@ -40,15 +40,14 @@ var loginCmd = &cobra.Command{
 			return
 		}
 
-		// The PKCE verifier is minted in this process, so a piped stdin can never
-		// carry back a code that matches it.
+		// The PKCE verifier is minted in this process, so a code piped into a later invocation can never match it.
 		if u.GlobalForAIFlag {
 			u.PrintFatalCode("login requires an interactive terminal — run 'gcli login' without --for-ai", nil, u.ExitUsage)
 		}
 
 		config, _, err := auth.LoadCredentials()
 		if errors.Is(err, auth.ErrNoCredentials) {
-			u.PrintFatalCode(err.Error()+"; "+auth.NoCredentialsHint, nil, u.ExitAuth)
+			u.PrintFatalCode("", auth.WithSetupHint(err), u.ExitAuth)
 		}
 		if err != nil {
 			u.PrintFatalCode("failed to load credentials", err, u.ExitAuth)

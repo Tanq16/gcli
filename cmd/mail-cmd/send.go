@@ -128,8 +128,7 @@ func applySignature(body string, contentType string, sigFlag string) (string, st
 
 	sig, err := mail.GetSignature(sigFlag)
 	if err != nil {
-		// The default lookup errors for any account with no signature at all, so only
-		// a named alias is a real failure — and a send cannot be undone.
+		// The default lookup errors for any account with no signature at all, so only a named alias is a real failure.
 		if sigFlag != "default" {
 			u.PrintFatal(fmt.Sprintf("failed to resolve signature for %q", sigFlag), err)
 		}

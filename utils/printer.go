@@ -30,10 +30,13 @@ func flattenErr(err error) string {
 }
 
 func aiError(prefix, msg string, err error) string {
-	if err != nil {
-		return prefix + msg + ": " + flattenErr(err)
+	if err == nil {
+		return prefix + msg
 	}
-	return prefix + msg
+	if msg == "" {
+		return prefix + flattenErr(err)
+	}
+	return prefix + msg + ": " + flattenErr(err)
 }
 
 func PrintInfo(msg string) {
@@ -56,8 +59,14 @@ func PrintSuccess(msg string) {
 	}
 }
 
+// Human and AI tiers include err, overriding the template's msg-only rule (spec §9.3); without it every failure reads as a bare "✗ upload failed".
 func PrintError(msg string, err error) {
 	if isCancelled(err) {
+		// The transport error's URL noise says nothing a user needs, but --debug asked for it.
+		if GlobalDebugFlag {
+			log.Warn().Err(err).Msg("cancelled")
+			return
+		}
 		PrintWarn("cancelled", nil)
 		return
 	}
@@ -71,22 +80,25 @@ func PrintError(msg string, err error) {
 }
 
 func humanMsg(msg string, err error) string {
-	if err != nil {
-		return msg + ": " + err.Error()
+	if err == nil {
+		return msg
 	}
-	return msg
+	if msg == "" {
+		return err.Error()
+	}
+	return msg + ": " + err.Error()
 }
 
 func PrintFatal(msg string, err error) {
 	PrintError(msg, err)
-	os.Exit(exitCodeFor(err))
+	os.Exit(ExitCodeFor(err))
 }
 
 // For failures classification cannot infer (usage, partial, auth-at-PreRun). An abort
 // outranks the caller's code, since PrintError already reported it as "cancelled".
 func PrintFatalCode(msg string, err error, code int) {
 	PrintError(msg, err)
-	if exitCodeFor(err) == ExitCancelled {
+	if ExitCodeFor(err) == ExitCancelled {
 		code = ExitCancelled
 	}
 	os.Exit(code)
@@ -97,7 +109,7 @@ type exitCoder interface {
 	ExitCode() int
 }
 
-func exitCodeFor(err error) int {
+func ExitCodeFor(err error) int {
 	if err == nil {
 		return ExitGeneric
 	}
@@ -110,8 +122,6 @@ func exitCodeFor(err error) int {
 	return ExitGeneric
 }
 
-// A ctx-cancelled API call surfaces as a transport error wrapping context.Canceled,
-// whose URL noise says nothing the user needs; report the abort itself.
 func isCancelled(err error) bool {
 	return err != nil && (errors.Is(err, context.Canceled) || errors.Is(err, ErrPromptCancelled))
 }

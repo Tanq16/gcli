@@ -150,8 +150,6 @@ func TestBuildPlanMkDirsOrdering(t *testing.T) {
 	}
 }
 
-// Skipping an entry drops it from its own tree but must also protect the same rel path
-// on the other side, where it would otherwise look dest-only and be mirror-deleted.
 func TestBuildPlanProtectSet(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -244,8 +242,7 @@ func TestBuildPlanDeleteBlastRadius(t *testing.T) {
 	}
 }
 
-// On a case-insensitive filesystem a case-only difference is one file, so a pull must
-// not plan a download and a delete for it.
+// On a case-insensitive filesystem a case-only difference is one file, so a pull must not plan both a download and a delete.
 func TestBuildPlanCaseFoldReverse(t *testing.T) {
 	local := mkTree(map[string]Entry{"readme.md": {Size: 5, MTime: baseTime}}, "docs")
 	remote := mkTree(map[string]Entry{"README.md": {Size: 9, MTime: baseTime, MD5: "aa", ID: "r"}}, "Docs")
@@ -501,8 +498,6 @@ func TestBuildLocalTreeReportsIgnored(t *testing.T) {
 	if _, ok := tree.Files["cache/only.tmp"]; ok {
 		t.Fatal("ignored file leaked into the tree")
 	}
-	// Without these the other side sees them as dest-only; an ignored file, and a whole
-	// pruned directory, would both be mirror-deleted.
 	if !slices.Contains(ignored, "cache/only.tmp") {
 		t.Fatalf("ignored file not reported: %v", ignored)
 	}
@@ -511,8 +506,6 @@ func TestBuildLocalTreeReportsIgnored(t *testing.T) {
 	}
 }
 
-// The probe answers for the volume, not the GOOS, and must survive a root that the pull
-// has not created yet by walking up to the deepest existing ancestor.
 func TestCaseInsensitiveDir(t *testing.T) {
 	root := t.TempDir()
 	got := caseInsensitiveDir(root)

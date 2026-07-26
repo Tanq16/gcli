@@ -30,8 +30,7 @@ func PrintTable(headers []string, rows [][]string) {
 	renderTable(headers, rows, nil)
 }
 
-// Columns named in keepFull (matched case-insensitively against the headers) hold values
-// that are worthless once shortened, so they give up width only as a last resort.
+// Columns named in keepFull (matched case-insensitively) hold values worthless once shortened, so they give up width last.
 func PrintTableKeepFull(headers []string, rows [][]string, keepFull ...string) {
 	renderTable(headers, rows, keepFull)
 }
@@ -142,9 +141,8 @@ func shrinkTarget(widths []int, protected []bool) int {
 	return target
 }
 
-// A protected column is never truncated, so when the protected columns alone cannot fit,
-// shrinking the rest buys nothing and only destroys their content: overflow instead and
-// let the terminal wrap, which keeps an ID or a link copy-pasteable.
+// A protected column is never truncated, so when they alone cannot fit, shrinking the rest only
+// destroys content: overflow instead and let the terminal wrap, keeping an ID or link copy-pasteable.
 func fitAchievable(widths []int, protected []bool, overhead, maxWidth int) bool {
 	sum := overhead
 	for i, w := range widths {

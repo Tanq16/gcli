@@ -17,8 +17,7 @@ import (
 // Guard the TUI prompts: bubbletea leaks a raw "/dev/tty: no such device" error under cron/CI/ssh-without-a-tty, so refuse cleanly and point at the non-interactive path.
 var errNoTTY = errors.New("no interactive terminal — re-run with --for-ai and pipe the value, or skip the prompt with the relevant flag")
 
-// Callers must tell an aborted prompt from a legitimately empty submission, since they
-// write the latter over live data.
+// Callers must tell an aborted prompt from a legitimately empty submission, since they write the latter over live data.
 var ErrPromptCancelled = errors.New("cancelled")
 
 func interactive() bool {

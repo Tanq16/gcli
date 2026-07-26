@@ -65,7 +65,7 @@ var unshareCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := validateUnshare(unshareFlags.with, unshareFlags.anyone, unshareFlags.all); err != nil {
-			u.PrintFatalCode(err.Error(), nil, u.ExitUsage)
+			u.PrintFatalCode("", err, u.ExitUsage)
 		}
 		removed, err := drive.C().Unshare(cmd.Context(), args[0], drive.UnshareOptions{
 			Emails: unshareFlags.with,

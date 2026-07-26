@@ -263,8 +263,6 @@ func TestBatchExitCode(t *testing.T) {
 	}
 }
 
-// The classified cause sits behind ItemError's wrapper, so a batch that fails
-// entirely must still report that cause rather than collapsing to partial/generic.
 func TestItemsExitCode(t *testing.T) {
 	tests := []struct {
 		name      string

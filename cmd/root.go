@@ -34,8 +34,7 @@ var rootCmd = &cobra.Command{
 func Execute() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	// Only cobra arg/flag validation surfaces an error here, and a flag-parse
-	// failure precedes setupLogs, so the printer's output tiers are not yet set.
+	// A flag-parse failure precedes setupLogs, so the printer's output tiers are not yet set.
 	if err := rootCmd.ExecuteContext(ctx); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(u.ExitUsage)

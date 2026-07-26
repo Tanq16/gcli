@@ -24,11 +24,15 @@ import (
 
 var requiredScopes = []string{driveapi.DriveScope, gmail.GmailModifyScope}
 
-// Setting up an OAuth client and authorizing it have different remedies, so callers
-// can tell them apart and print only the instruction that applies.
+// Distinct from a missing token: the two have different remedies, so callers print only the instruction that applies.
 var ErrNoCredentials = errors.New("no usable OAuth client")
 
-const NoCredentialsHint = "run 'gcli login --setup', or set GCLI_CLIENT_ID and GCLI_CLIENT_SECRET"
+const noCredentialsHint = "run 'gcli login --setup', or set GCLI_CLIENT_ID and GCLI_CLIENT_SECRET"
+
+// The remedy must trail the whole cause chain, so it is wrapped into the error rather than passed as a printer message.
+func WithSetupHint(err error) error {
+	return fmt.Errorf("%w; %s", err, noCredentialsHint)
+}
 
 var scopeNames = map[string]string{
 	driveapi.DriveScope:    "Drive",
@@ -171,8 +175,7 @@ func extractCode(input string) string {
 	if parsed, err := url.Parse(input); err == nil && parsed.Scheme != "" {
 		return parsed.Query().Get("code")
 	}
-	// A bare code pasted from the address bar arrives percent-encoded, but a literal
-	// '+' is part of the code rather than an encoded space.
+	// A bare code pasted from the address bar arrives percent-encoded, but a literal '+' is part of the code, not an encoded space.
 	if c, err := url.QueryUnescape(input); err == nil && !strings.Contains(input, "+") {
 		return c
 	}
