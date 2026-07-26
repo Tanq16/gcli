@@ -62,10 +62,12 @@ var searchCmd = &cobra.Command{
 		}
 
 		if searchFlags.in == "" {
-			u.PrintTable(searchColumns(ctx, c, files, searchFlags.withID))
+			headers, rows := searchColumns(ctx, c, files, searchFlags.withID)
+			u.PrintTableKeepFull(headers, rows, "ID")
 			return
 		}
-		u.PrintTable(fileColumns(files, searchFlags.withID))
+		headers, rows := fileColumns(files, searchFlags.withID)
+		u.PrintTableKeepFull(headers, rows, "ID")
 	},
 }
 

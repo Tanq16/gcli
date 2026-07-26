@@ -160,7 +160,7 @@ func resolveSecret(flagVal string) (string, error) {
 
 func handoff(ctx context.Context) error {
 	if u.GlobalForAIFlag {
-		u.PrintInfo("run 'gcli login' to authenticate")
+		u.PrintInfo("credentials are in place — authorize by running 'gcli login' in a terminal (that step needs a browser, so it cannot run under --for-ai)")
 		return nil
 	}
 	choice, err := u.PromptSelect("Log in now?", []string{"Yes", "No"})

@@ -1,6 +1,8 @@
 package driveCmd
 
 import (
+	"errors"
+
 	"github.com/spf13/cobra"
 	"github.com/tanq16/gcli/internal/auth"
 	"github.com/tanq16/gcli/internal/drive"
@@ -18,6 +20,9 @@ var DriveCmd = &cobra.Command{
 	Short: "Google Drive file operations",
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		client, err := auth.GetHTTPClient(cmd.Context())
+		if errors.Is(err, auth.ErrNoCredentials) {
+			u.PrintFatalCode(err.Error()+"; "+auth.NoCredentialsHint, nil, u.ExitAuth)
+		}
 		if err != nil {
 			u.PrintFatalCode("not authenticated — run 'gcli login'", err, u.ExitAuth)
 		}

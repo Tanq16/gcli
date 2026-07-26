@@ -16,24 +16,30 @@ var rmCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		ctx := cmd.Context()
 		c := drive.C()
-		failed := 0
+		trashed := 0
+		var errs []error
 		for _, arg := range args {
+			// Without this an abort reports itself once per remaining argument.
+			if ctx.Err() != nil {
+				break
+			}
 			f, err := c.ResolveArg(ctx, arg)
 			if err != nil {
 				u.PrintError("failed to resolve "+arg, err)
-				failed++
+				errs = append(errs, err)
 				continue
 			}
 			if err := c.TrashFile(ctx, f.Id); err != nil {
 				u.PrintError("failed to trash "+f.Name, err)
-				failed++
+				errs = append(errs, err)
 				continue
 			}
 			c.InvalidatePath(arg)
+			trashed++
 			u.PrintSuccess("moved " + f.Name + " to trash")
 		}
-		if failed > 0 {
-			os.Exit(u.ExitPartial)
+		if code := drive.BatchExitCode(trashed, errs); code != 0 {
+			os.Exit(code)
 		}
 	},
 }

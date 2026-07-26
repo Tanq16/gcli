@@ -29,18 +29,13 @@ type SearchOptions struct {
 // Returned to stop Pages early at the limit; filtered with errors.Is, not a real error.
 var errStopPaging = errors.New("stop paging")
 
-// Size filters apply client-side — Drive has no size query operator.
-func (c *Client) Search(ctx context.Context, opts SearchOptions) ([]*driveapi.File, error) {
-	conds := []string{"trashed = false"}
-	if opts.Query != "" {
-		field := "name"
-		if opts.Content {
-			field = "fullText"
-		}
-		conds = append(conds, fmt.Sprintf("%s contains '%s'", field, escapeQuery(opts.Query)))
-	}
+// Size is the one predicate Drive cannot express in a query, so paging runs on until
+// enough post-filter matches land; the budget stops a rare size paging an entire Drive.
+const sizeScanBudget = 10000
 
+func (c *Client) Search(ctx context.Context, opts SearchOptions) ([]*driveapi.File, error) {
 	cor := corpus{}
+	folderID := ""
 	if opts.In != "" {
 		folder, err := c.ResolveArg(ctx, opts.In)
 		if err != nil {
@@ -49,37 +44,13 @@ func (c *Client) Search(ctx context.Context, opts SearchOptions) ([]*driveapi.Fi
 		if !IsFolder(folder) {
 			return nil, usageErr("--in target '%s' is not a folder", folder.Name)
 		}
-		conds = append(conds, fmt.Sprintf("'%s' in parents", folder.Id))
-		cor = corpusForFile(folder)
+		folderID, cor = folder.Id, corpusForFile(folder)
 	}
 
-	tc, err := typeCondition(opts.Type)
+	q, err := searchQuery(opts, folderID, time.Now())
 	if err != nil {
 		return nil, err
 	}
-	if tc != "" {
-		conds = append(conds, tc)
-	}
-	for _, ext := range opts.Ext {
-		ext = strings.TrimPrefix(strings.TrimSpace(ext), ".")
-		if ext == "" {
-			continue
-		}
-		conds = append(conds, fmt.Sprintf("name contains '.%s'", escapeQuery(ext)))
-	}
-
-	now := time.Now()
-	if opts.Created != "" {
-		if err := appendTimeCond(&conds, "createdTime", opts.Created, now); err != nil {
-			return nil, err
-		}
-	}
-	if opts.Modified != "" {
-		if err := appendTimeCond(&conds, "modifiedTime", opts.Modified, now); err != nil {
-			return nil, err
-		}
-	}
-
 	orderBy, err := sortOrder(opts.Sort)
 	if err != nil {
 		return nil, err
@@ -88,15 +59,25 @@ func (c *Client) Search(ctx context.Context, opts SearchOptions) ([]*driveapi.Fi
 	if limit <= 0 {
 		limit = 100
 	}
+	pageSize, budget := min(limit, 1000), limit
+	if opts.SizeMin > 0 || opts.SizeMax > 0 {
+		pageSize, budget = 1000, max(limit, sizeScanBudget)
+	}
 
-	call := c.filesList(cor).Q(strings.Join(conds, " and ")).Fields(ListFields()).PageSize(int64(min(limit, 1000)))
+	call := c.filesList(cor).Q(q).Fields(ListFields()).PageSize(int64(pageSize))
 	if orderBy != "" {
 		call = call.OrderBy(orderBy)
 	}
 	var out []*driveapi.File
+	scanned := 0
 	err = call.Pages(ctx, func(p *driveapi.FileList) error {
-		out = append(out, p.Files...)
-		if len(out) >= limit {
+		scanned += len(p.Files)
+		for _, f := range p.Files {
+			if matchesSize(f, opts.SizeMin, opts.SizeMax) {
+				out = append(out, f)
+			}
+		}
+		if len(out) >= limit || scanned >= budget {
 			return errStopPaging
 		}
 		return nil
@@ -104,24 +85,68 @@ func (c *Client) Search(ctx context.Context, opts SearchOptions) ([]*driveapi.Fi
 	if err != nil && !errors.Is(err, errStopPaging) {
 		return nil, gapi.HandleError(err)
 	}
-
-	if opts.SizeMin > 0 || opts.SizeMax > 0 {
-		filtered := out[:0]
-		for _, f := range out {
-			if opts.SizeMin > 0 && f.Size < opts.SizeMin {
-				continue
-			}
-			if opts.SizeMax > 0 && f.Size > opts.SizeMax {
-				continue
-			}
-			filtered = append(filtered, f)
-		}
-		out = filtered
-	}
 	if len(out) > limit {
 		out = out[:limit]
 	}
 	return out, nil
+}
+
+func matchesSize(f *driveapi.File, minSize, maxSize int64) bool {
+	if minSize > 0 && f.Size < minSize {
+		return false
+	}
+	if maxSize > 0 && f.Size > maxSize {
+		return false
+	}
+	return true
+}
+
+func searchQuery(opts SearchOptions, folderID string, now time.Time) (string, error) {
+	conds := []string{"trashed = false"}
+	if opts.Query != "" {
+		field := "name"
+		if opts.Content {
+			field = "fullText"
+		}
+		conds = append(conds, fmt.Sprintf("%s contains '%s'", field, escapeQuery(opts.Query)))
+	}
+	if folderID != "" {
+		conds = append(conds, fmt.Sprintf("'%s' in parents", folderID))
+	}
+
+	tc, err := typeCondition(opts.Type)
+	if err != nil {
+		return "", err
+	}
+	if tc != "" {
+		conds = append(conds, tc)
+	}
+
+	// Extensions are alternatives, so they OR together, parenthesised because the
+	// group is joined into the outer AND chain.
+	var extConds []string
+	for _, ext := range opts.Ext {
+		ext = strings.TrimPrefix(strings.TrimSpace(ext), ".")
+		if ext == "" {
+			continue
+		}
+		extConds = append(extConds, fmt.Sprintf("name contains '.%s'", escapeQuery(ext)))
+	}
+	if len(extConds) > 0 {
+		conds = append(conds, "("+strings.Join(extConds, " or ")+")")
+	}
+
+	if opts.Created != "" {
+		if err := appendTimeCond(&conds, "createdTime", opts.Created, now); err != nil {
+			return "", err
+		}
+	}
+	if opts.Modified != "" {
+		if err := appendTimeCond(&conds, "modifiedTime", opts.Modified, now); err != nil {
+			return "", err
+		}
+	}
+	return strings.Join(conds, " and "), nil
 }
 
 func appendTimeCond(conds *[]string, field, spec string, now time.Time) error {

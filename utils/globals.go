@@ -5,7 +5,8 @@ var GlobalDebugFlag bool
 var GlobalForAIFlag bool
 
 // Exit-code vocabulary (spec §3.1/§9.4). PrintFatal derives the code from an
-// error implementing ExitCode() int; PrintFatalCode sets it explicitly.
+// error implementing ExitCode() int, or from a cancelled context or prompt;
+// PrintFatalCode sets it explicitly.
 const (
 	ExitGeneric     = 1
 	ExitUsage       = 2

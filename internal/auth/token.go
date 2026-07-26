@@ -92,11 +92,11 @@ func saveToken(st *storedToken) error {
 func loadToken() (*storedToken, error) {
 	data, err := os.ReadFile(filepath.Join(ConfigDir(), "token.json"))
 	if err != nil {
-		return nil, errors.New("not authenticated — run 'gcli login'")
+		return nil, errors.New("no saved token")
 	}
 	var st storedToken
 	if err := json.Unmarshal(data, &st); err != nil {
-		return nil, errors.New("corrupt token file — run 'gcli login' again")
+		return nil, errors.New("the saved token file is corrupt")
 	}
 	return &st, nil
 }
@@ -120,7 +120,7 @@ func GetHTTPClient(ctx context.Context) (*http.Client, error) {
 	if rt := os.Getenv("GCLI_REFRESH_TOKEN"); rt != "" {
 		ts := config.TokenSource(ctx, &oauth2.Token{RefreshToken: rt})
 		if _, err := ts.Token(); err != nil {
-			return nil, fmt.Errorf("GCLI_REFRESH_TOKEN is invalid or expired — check the token or run 'gcli login': %w", err)
+			return nil, fmt.Errorf("GCLI_REFRESH_TOKEN is invalid or expired: %w", err)
 		}
 		return oauth2.NewClient(ctx, ts), nil
 	}
@@ -130,13 +130,13 @@ func GetHTTPClient(ctx context.Context) (*http.Client, error) {
 	}
 	if len(st.Scopes) > 0 {
 		if missing := missingScopes(requiredScopes, st.Scopes); len(missing) > 0 {
-			return nil, errors.New("gcli now needs additional permissions — run 'gcli login' to re-consent")
+			return nil, fmt.Errorf("the saved token does not grant %s access — consent was incomplete", scopeLabels(missing))
 		}
 	}
 	ts := config.TokenSource(ctx, &st.Token)
 	newToken, err := ts.Token()
 	if err != nil {
-		return nil, errors.New("token refresh failed — run 'gcli login' again")
+		return nil, errors.New("the saved token could not be refreshed")
 	}
 	if newToken.AccessToken != st.Token.AccessToken {
 		st.Token = *newToken

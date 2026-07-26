@@ -1,9 +1,14 @@
 package drive
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"slices"
 	"testing"
+	"time"
 
+	u "github.com/tanq16/gcli/utils"
 	driveapi "google.golang.org/api/drive/v3"
 )
 
@@ -159,6 +164,203 @@ func contains(s, sub string) bool {
 		}
 	}
 	return false
+}
+
+func TestSearchQuery(t *testing.T) {
+	now := time.Date(2026, 7, 24, 12, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name     string
+		opts     SearchOptions
+		folderID string
+		want     string
+		wantErr  bool
+	}{
+		{name: "no filters", want: "trashed = false"},
+		{name: "name match", opts: SearchOptions{Query: "tax"}, want: "trashed = false and name contains 'tax'"},
+		{name: "full text", opts: SearchOptions{Query: "tax", Content: true}, want: "trashed = false and fullText contains 'tax'"},
+		{name: "query escaped", opts: SearchOptions{Query: "o'brien"}, want: `trashed = false and name contains 'o\'brien'`},
+		{name: "scoped to folder", folderID: "F1", want: "trashed = false and 'F1' in parents"},
+		{
+			name: "multiple extensions are alternatives",
+			opts: SearchOptions{Query: "tax", Ext: []string{"pdf", "docx"}},
+			want: "trashed = false and name contains 'tax' and (name contains '.pdf' or name contains '.docx')",
+		},
+		{name: "single extension", opts: SearchOptions{Ext: []string{"pdf"}}, want: "trashed = false and (name contains '.pdf')"},
+		{name: "dots and spaces trimmed", opts: SearchOptions{Ext: []string{" .pdf ", "docx"}}, want: "trashed = false and (name contains '.pdf' or name contains '.docx')"},
+		{name: "blank extensions dropped", opts: SearchOptions{Ext: []string{"", " ", "."}}, want: "trashed = false"},
+		{name: "extension quote escaped", opts: SearchOptions{Ext: []string{"o'd"}}, want: `trashed = false and (name contains '.o\'d')`},
+		{
+			name: "type joins the extension group with and",
+			opts: SearchOptions{Type: "file", Ext: []string{"pdf", "docx"}},
+			want: "trashed = false and mimeType != '" + folderMIME + "' and (name contains '.pdf' or name contains '.docx')",
+		},
+		{name: "relative created window", opts: SearchOptions{Created: "7d"}, want: "trashed = false and createdTime >= '2026-07-17T12:00:00Z'"},
+		{name: "unknown type", opts: SearchOptions{Type: "video"}, wantErr: true},
+		{name: "bad time spec", opts: SearchOptions{Modified: "3y"}, wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := searchQuery(tt.opts, tt.folderID, now)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("searchQuery err = %v, wantErr %v", err, tt.wantErr)
+			}
+			if !tt.wantErr && got != tt.want {
+				t.Errorf("searchQuery = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestMatchesSize(t *testing.T) {
+	tests := []struct {
+		name             string
+		size             int64
+		minSize, maxSize int64
+		want             bool
+	}{
+		{name: "no bounds", size: 5, want: true},
+		{name: "at the minimum", size: 1024, minSize: 1024, want: true},
+		{name: "below the minimum", size: 1023, minSize: 1024},
+		{name: "at the maximum", size: 1024, maxSize: 1024, want: true},
+		{name: "above the maximum", size: 1025, maxSize: 1024},
+		{name: "inside both bounds", size: 512, minSize: 10, maxSize: 1024, want: true},
+		{name: "zero size with a minimum", minSize: 1},
+		{name: "zero size with only a maximum", maxSize: 1024, want: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := matchesSize(&driveapi.File{Size: tt.size}, tt.minSize, tt.maxSize); got != tt.want {
+				t.Errorf("matchesSize(%d, min=%d, max=%d) = %v, want %v", tt.size, tt.minSize, tt.maxSize, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestBatchExitCode(t *testing.T) {
+	tests := []struct {
+		name      string
+		succeeded int
+		errs      []error
+		want      int
+	}{
+		{name: "everything succeeded", succeeded: 3, want: 0},
+		{name: "mixed outcome is partial", succeeded: 1, errs: []error{notFoundErr("gone")}, want: u.ExitPartial},
+		{name: "single not-found", errs: []error{notFoundErr("gone")}, want: u.ExitNotFound},
+		{name: "all not-found agree", errs: []error{notFoundErr("a"), notFoundErr("b")}, want: u.ExitNotFound},
+		{name: "wrapped code still classified", errs: []error{fmt.Errorf("resolve: %w", notFoundErr("a"))}, want: u.ExitNotFound},
+		{name: "disagreeing causes fall back to partial", errs: []error{notFoundErr("a"), usageErr("b")}, want: u.ExitPartial},
+		{name: "unclassified error", errs: []error{errors.New("boom")}, want: u.ExitGeneric},
+		{name: "cancellation", errs: []error{fmt.Errorf("get: %w", context.Canceled)}, want: u.ExitCancelled},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := BatchExitCode(tt.succeeded, tt.errs); got != tt.want {
+				t.Errorf("BatchExitCode(%d, %v) = %d, want %d", tt.succeeded, tt.errs, got, tt.want)
+			}
+		})
+	}
+}
+
+// The classified cause sits behind ItemError's wrapper, so a batch that fails
+// entirely must still report that cause rather than collapsing to partial/generic.
+func TestItemsExitCode(t *testing.T) {
+	tests := []struct {
+		name      string
+		succeeded int
+		errs      []ItemError
+		want      int
+	}{
+		{name: "no failures", succeeded: 2, want: 0},
+		{name: "every item failed the same way", errs: []ItemError{
+			{RelPath: "a.txt", Err: notFoundErr("gone")},
+			{RelPath: "b.txt", Err: notFoundErr("gone")},
+		}, want: u.ExitNotFound},
+		{name: "one success makes it partial", succeeded: 1, errs: []ItemError{
+			{RelPath: "a.txt", Err: notFoundErr("gone")},
+		}, want: u.ExitPartial},
+		{name: "disagreeing causes fall back to partial", errs: []ItemError{
+			{RelPath: "a.txt", Err: notFoundErr("gone")},
+			{RelPath: "b.txt", Err: usageErr("bad")},
+		}, want: u.ExitPartial},
+		{name: "cancellation survives the wrapper", errs: []ItemError{
+			{RelPath: "a.txt", Err: fmt.Errorf("put: %w", context.Canceled)},
+		}, want: u.ExitCancelled},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := ItemsExitCode(tt.succeeded, tt.errs); got != tt.want {
+				t.Errorf("ItemsExitCode(%d, %v) = %d, want %d", tt.succeeded, tt.errs, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsNotFound(t *testing.T) {
+	cases := map[string]struct {
+		err  error
+		want bool
+	}{
+		"nil":              {nil, false},
+		"not found":        {notFoundErr("gone"), true},
+		"wrapped":          {fmt.Errorf("resolve: %w", notFoundErr("gone")), true},
+		"usage":            {usageErr("bad"), false},
+		"prompt cancelled": {u.ErrPromptCancelled, false},
+		"plain":            {errors.New("boom"), false},
+	}
+	for name, tt := range cases {
+		t.Run(name, func(t *testing.T) {
+			if got := IsNotFound(tt.err); got != tt.want {
+				t.Errorf("IsNotFound(%v) = %v, want %v", tt.err, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestResolveParentPaths(t *testing.T) {
+	files := []*driveapi.File{
+		{Id: "a", Parents: []string{"good"}},
+		{Id: "b", Parents: []string{"bad"}},
+		{Id: "c", Parents: []string{"bad"}},
+		{Id: "d", Parents: []string{"good"}},
+		{Id: "e"},
+		{Id: "f", Parents: []string{"bad"}},
+	}
+
+	t.Run("failures are cached too", func(t *testing.T) {
+		calls := map[string]int{}
+		paths, allResolved := resolveParentPaths(files, func(id string) (string, error) {
+			calls[id]++
+			if id == "bad" {
+				return "", errors.New("permission denied")
+			}
+			return "Work/Notes", nil
+		})
+		if calls["bad"] != 1 {
+			t.Errorf("unresolvable parent queried %d times, want 1", calls["bad"])
+		}
+		if calls["good"] != 1 {
+			t.Errorf("resolved parent queried %d times, want 1", calls["good"])
+		}
+		if allResolved {
+			t.Error("allResolved = true, want false when a parent failed")
+		}
+		if paths["good"] != "/Work/Notes" {
+			t.Errorf("paths[good] = %q, want %q", paths["good"], "/Work/Notes")
+		}
+		if _, ok := paths["bad"]; ok {
+			t.Error("a failed parent must not land in the path map")
+		}
+	})
+
+	t.Run("all resolved", func(t *testing.T) {
+		paths, allResolved := resolveParentPaths(files, func(id string) (string, error) { return id, nil })
+		if !allResolved {
+			t.Error("allResolved = false, want true")
+		}
+		if len(paths) != 2 {
+			t.Errorf("paths has %d entries, want 2 (one per distinct parent)", len(paths))
+		}
+	})
 }
 
 func TestFileType(t *testing.T) {

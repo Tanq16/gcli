@@ -1,8 +1,16 @@
 package drive
 
 import (
+	"bytes"
+	"crypto/md5"
+	"encoding/hex"
+	"errors"
+	"io"
+	"os"
+	"path/filepath"
 	"testing"
 
+	"github.com/tanq16/gcli/internal/gapi"
 	driveapi "google.golang.org/api/drive/v3"
 )
 
@@ -47,6 +55,105 @@ func TestByteProgressWriterCounts(t *testing.T) {
 	}
 	if got := p.doneBytes.Load(); got != 8 {
 		t.Fatalf("doneBytes = %d, want 8", got)
+	}
+}
+
+// Byte weighting is only honest when every size is known up front, and a
+// Workspace file has none until it is exported.
+func TestBatchTotalBytes(t *testing.T) {
+	binary := func(size int64) downloadItem { return downloadItem{file: &driveapi.File{Size: size}} }
+	export := downloadItem{file: &driveapi.File{}, export: true}
+	tests := []struct {
+		name  string
+		items []downloadItem
+		want  int64
+	}{
+		{"empty batch", nil, 0},
+		{"all sized", []downloadItem{binary(10), binary(90)}, 100},
+		{"one export among sized", []downloadItem{binary(10), export, binary(90)}, 0},
+		{"export last still discards", []downloadItem{binary(10), export}, 0},
+		{"all exports", []downloadItem{export, export}, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := batchTotalBytes(tt.items); got != tt.want {
+				t.Fatalf("batchTotalBytes = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestByteProgressRenderLabel(t *testing.T) {
+	tests := []struct {
+		name       string
+		totalBytes int64
+		doneBytes  int64
+		want       string
+	}{
+		{"known total shows both", 100, 50, "downloading 1/2 files (50 B / 100 B)"},
+		{"unknown total shows transferred only", 0, 50, "downloading 1/2 files (50 B)"},
+		{"unknown total before any bytes", 0, 0, "downloading 1/2 files"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := newByteProgress(2, tt.totalBytes)
+			p.doneFiles.Store(1)
+			p.doneBytes.Store(tt.doneBytes)
+			if got, _ := p.render("downloading"); got != tt.want {
+				t.Fatalf("render = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+type tornReader struct {
+	data []byte
+	err  error
+}
+
+func (r *tornReader) Read(p []byte) (int, error) {
+	if len(r.data) == 0 {
+		return 0, r.err
+	}
+	n := copy(p, r.data)
+	r.data = r.data[n:]
+	return n, nil
+}
+
+// A failed attempt is retried from offset 0, so any bytes it streamed must be
+// rolled back or the progress total counts them twice.
+func TestWritePart(t *testing.T) {
+	payload := []byte("hello world")
+	sum := md5.Sum(payload)
+	torn := errors.New("read tcp: connection reset by peer")
+	tests := []struct {
+		name      string
+		body      io.Reader
+		wantMD5   string
+		wantErr   error
+		wantBytes int64
+		wantPart  bool
+	}{
+		{"verified transfer counts bytes", bytes.NewReader(payload), hex.EncodeToString(sum[:]), nil, int64(len(payload)), true},
+		{"no checksum skips verification", bytes.NewReader(payload), "", nil, int64(len(payload)), true},
+		{"torn body rolls back and clears part", &tornReader{data: payload, err: torn}, hex.EncodeToString(sum[:]), torn, 0, false},
+		{"mismatch reports the retryable sentinel", bytes.NewReader(payload), "0badc0ffee", gapi.ErrChecksumMismatch, 0, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			part := filepath.Join(t.TempDir(), "f.part")
+			prog := newByteProgress(1, int64(len(payload)))
+			err := writePart(part, tt.wantMD5, tt.body, prog)
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("writePart err = %v, want %v", err, tt.wantErr)
+			}
+			if got := prog.doneBytes.Load(); got != tt.wantBytes {
+				t.Fatalf("doneBytes = %d, want %d", got, tt.wantBytes)
+			}
+			if _, serr := os.Stat(part); (serr == nil) != tt.wantPart {
+				t.Fatalf("part present = %v, want %v", serr == nil, tt.wantPart)
+			}
+		})
 	}
 }
 

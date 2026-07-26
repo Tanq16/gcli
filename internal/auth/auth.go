@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -22,6 +23,25 @@ import (
 )
 
 var requiredScopes = []string{driveapi.DriveScope, gmail.GmailModifyScope}
+
+// Setting up an OAuth client and authorizing it have different remedies, so callers
+// can tell them apart and print only the instruction that applies.
+var ErrNoCredentials = errors.New("no usable OAuth client")
+
+const NoCredentialsHint = "run 'gcli login --setup', or set GCLI_CLIENT_ID and GCLI_CLIENT_SECRET"
+
+var scopeNames = map[string]string{
+	driveapi.DriveScope:    "Drive",
+	gmail.GmailModifyScope: "Gmail",
+}
+
+func scopeLabels(scopes []string) string {
+	labels := make([]string, 0, len(scopes))
+	for _, s := range scopes {
+		labels = append(labels, cmp.Or(scopeNames[s], s))
+	}
+	return strings.Join(labels, ", ")
+}
 
 func ConfigDir() string {
 	dir := os.Getenv("GCLI_CONFIG_DIR")
@@ -50,14 +70,14 @@ func LoadCredentials() (*oauth2.Config, string, error) {
 	credPath := filepath.Join(ConfigDir(), "credentials.json")
 	data, err := os.ReadFile(credPath)
 	if err != nil {
-		return nil, "", errors.New("no OAuth client found — run 'gcli login --setup', or set GCLI_CLIENT_ID and GCLI_CLIENT_SECRET")
+		return nil, "", ErrNoCredentials
 	}
 	if err := validateClientJSON(data); err != nil {
-		return nil, "", err
+		return nil, "", fmt.Errorf("%w: %w", ErrNoCredentials, err)
 	}
 	config, err := google.ConfigFromJSON(data, requiredScopes...)
 	if err != nil {
-		return nil, "", fmt.Errorf("invalid credentials file: %w", err)
+		return nil, "", fmt.Errorf("%w: credentials.json could not be parsed: %w", ErrNoCredentials, err)
 	}
 	return config, "file", nil
 }
@@ -71,9 +91,9 @@ func validateClientJSON(data []byte) error {
 	case probe["installed"] != nil:
 		return nil
 	case probe["web"] != nil:
-		return errors.New(`credentials.json is a "Web application" OAuth client — gcli needs a "Desktop app" client; recreate it with type Desktop app ('gcli login --setup' walks you through it)`)
+		return errors.New(`credentials.json is a "Web application" OAuth client, but gcli needs a "Desktop app" client`)
 	case probe["type"] != nil:
-		return errors.New("credentials.json looks like a service account key — gcli needs a Desktop app OAuth client ('gcli login --setup')")
+		return errors.New("credentials.json looks like a service account key, not a Desktop app OAuth client")
 	default:
 		return errors.New("unrecognized credentials.json shape — expected the Google Console Desktop-app OAuth client download")
 	}
@@ -91,33 +111,41 @@ func Login(ctx context.Context, config *oauth2.Config) (*oauth2.Token, error) {
 		oauth2.AccessTypeOffline, oauth2.ApprovalForce,
 		oauth2.S256ChallengeOption(verifier))
 
-	switch {
-	case u.GlobalForAIFlag:
-		u.PrintInfo("Visit this URL to authorize, then pipe back the redirect URL (or the code):")
-		u.PrintGeneric(authURL)
-	case canOpenBrowser() && openBrowser(authURL) == nil:
+	if canOpenBrowser() && openBrowser(authURL) == nil {
 		u.PrintInfo("Opened your browser to authorize. Approve access — it then redirects to a 127.0.0.1 page that won't load, which is expected.")
-	default:
+	} else {
 		u.PrintInfo("Open this URL to authorize:")
 		u.PrintGeneric(authURL)
 	}
 
 	raw, err := u.PromptInput("Paste the redirect URL from your browser (or just the code):", "http://127.0.0.1/?state=...&code=...")
 	if err != nil {
-		return nil, fmt.Errorf("input error: %w", err)
+		return nil, err
 	}
-	if parsed, perr := url.Parse(strings.TrimSpace(raw)); perr == nil {
-		if s := parsed.Query().Get("state"); s != "" && s != state {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, errors.New("nothing was pasted — copy the whole 127.0.0.1 URL out of the browser address bar")
+	}
+	if parsed, perr := url.Parse(raw); perr == nil {
+		q := parsed.Query()
+		if e := q.Get("error"); e != "" {
+			return nil, consentError(e, q.Get("error_description"))
+		}
+		if s := q.Get("state"); s != "" && s != state {
 			return nil, errors.New("state mismatch — paste the redirect URL from the browser session you just authorized")
 		}
 	}
 	code := extractCode(raw)
 	if code == "" {
-		return nil, errors.New("no authorization code found in what you pasted")
+		return nil, errors.New("no authorization code found in what you pasted — it should be the 127.0.0.1 URL you were redirected to, not the authorization URL")
 	}
 	token, err := config.Exchange(ctx, code, oauth2.VerifierOption(verifier))
 	if err != nil {
 		return nil, fmt.Errorf("token exchange failed: %w", err)
+	}
+	granted := scopesFromToken(token, config)
+	if missing := missingScopes(requiredScopes, granted); len(missing) > 0 {
+		return nil, fmt.Errorf("consent was incomplete: gcli needs %s access but only %s was granted — re-run and leave every checkbox on the Google consent screen ticked", scopeLabels(missing), cmp.Or(scopeLabels(granted), "none"))
 	}
 	if err := SaveToken(ctx, config, token); err != nil {
 		return nil, err
@@ -125,14 +153,27 @@ func Login(ctx context.Context, config *oauth2.Config) (*oauth2.Token, error) {
 	return token, nil
 }
 
+func consentError(code, description string) error {
+	switch code {
+	case "access_denied":
+		return errors.New("access was denied at the consent screen — re-run and click Allow; if the OAuth client is still in Testing, first add your account under Google Auth Platform > Audience > Test users")
+	case "admin_policy_enforced":
+		return errors.New("your Google Workspace admin blocked this OAuth client — ask them to allow it, or use a personal Google account")
+	}
+	if description != "" {
+		return fmt.Errorf("authorization failed: %s (%s)", code, description)
+	}
+	return fmt.Errorf("authorization failed: %s", code)
+}
+
 func extractCode(input string) string {
 	input = strings.TrimSpace(input)
-	if parsed, err := url.Parse(input); err == nil {
-		if c := parsed.Query().Get("code"); c != "" {
-			return c
-		}
+	if parsed, err := url.Parse(input); err == nil && parsed.Scheme != "" {
+		return parsed.Query().Get("code")
 	}
-	if c, err := url.QueryUnescape(input); err == nil {
+	// A bare code pasted from the address bar arrives percent-encoded, but a literal
+	// '+' is part of the code rather than an encoded space.
+	if c, err := url.QueryUnescape(input); err == nil && !strings.Contains(input, "+") {
 		return c
 	}
 	return input

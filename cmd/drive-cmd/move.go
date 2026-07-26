@@ -38,14 +38,18 @@ var moveCmd = &cobra.Command{
 	},
 }
 
-// An unresolvable destination parent is a hard error, never a silent in-place
-// rename (the removed CL-03 footgun).
+// Only a destination that genuinely does not exist is a rename; any other lookup
+// failure is inconclusive, and would silently move the file out of its folder.
 func moveDestination(ctx context.Context, c *drive.Client, dst string) (string, string) {
-	if f, err := c.ResolveArg(ctx, dst); err == nil {
+	f, err := c.ResolveArg(ctx, dst)
+	switch {
+	case err == nil:
 		if !drive.IsFolder(f) {
 			u.PrintFatalCode("destination '"+f.Name+"' exists and is not a folder", nil, u.ExitUsage)
 		}
 		return f.Id, ""
+	case !drive.IsNotFound(err):
+		u.PrintFatal("failed to resolve destination", err)
 	}
 	parentID, name, err := c.ResolveArgParent(ctx, dst)
 	if err != nil {

@@ -3,6 +3,7 @@ package utils
 import (
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -26,12 +27,22 @@ var (
 
 // AI/debug get a lossless markdown table (never truncated); human mode is bounded to terminal width.
 func PrintTable(headers []string, rows [][]string) {
+	renderTable(headers, rows, nil)
+}
+
+// Columns named in keepFull (matched case-insensitively against the headers) hold values
+// that are worthless once shortened, so they give up width only as a last resort.
+func PrintTableKeepFull(headers []string, rows [][]string, keepFull ...string) {
+	renderTable(headers, rows, keepFull)
+}
+
+func renderTable(headers []string, rows [][]string, keepFull []string) {
 	if GlobalForAIFlag || GlobalDebugFlag {
 		printMarkdownTable(headers, rows)
 		return
 	}
 
-	headers, rows = boundTable(headers, rows, terminalWidth())
+	headers, rows = boundTable(headers, rows, terminalWidth(), protectedCols(headers, keepFull))
 	t := table.New().
 		Border(lipgloss.NormalBorder()).
 		BorderStyle(borderStyle).
@@ -105,7 +116,35 @@ func truncateToWidth(s string, max int) string {
 	return b.String() + "…"
 }
 
-func boundTable(headers []string, rows [][]string, maxWidth int) ([]string, [][]string) {
+func protectedCols(headers []string, keepFull []string) []bool {
+	if len(keepFull) == 0 {
+		return nil
+	}
+	protected := make([]bool, len(headers))
+	for i, h := range headers {
+		protected[i] = slices.ContainsFunc(keepFull, func(k string) bool { return strings.EqualFold(k, h) })
+	}
+	return protected
+}
+
+const colFloor = 4
+
+// includeProtected is the last resort: a protected column yields width only once
+// every other column sits at the floor.
+func shrinkTarget(widths []int, protected []bool, includeProtected bool) int {
+	target := -1
+	for i, w := range widths {
+		if w <= colFloor || (!includeProtected && i < len(protected) && protected[i]) {
+			continue
+		}
+		if target == -1 || w > widths[target] {
+			target = i
+		}
+	}
+	return target
+}
+
+func boundTable(headers []string, rows [][]string, maxWidth int, protected []bool) ([]string, [][]string) {
 	n := len(headers)
 	if n == 0 {
 		return headers, rows
@@ -120,7 +159,6 @@ func boundTable(headers []string, rows [][]string, maxWidth int) ([]string, [][]
 		}
 	}
 
-	const floor = 4
 	overhead := 3*n + 1
 	total := func() int {
 		sum := overhead
@@ -130,11 +168,9 @@ func boundTable(headers []string, rows [][]string, maxWidth int) ([]string, [][]
 		return sum
 	}
 	for total() > maxWidth {
-		widest := -1
-		for i, w := range widths {
-			if w > floor && (widest == -1 || w > widths[widest]) {
-				widest = i
-			}
+		widest := shrinkTarget(widths, protected, false)
+		if widest == -1 {
+			widest = shrinkTarget(widths, protected, true)
 		}
 		if widest == -1 {
 			break

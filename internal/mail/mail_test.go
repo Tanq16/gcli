@@ -224,6 +224,102 @@ func TestFormatDate(t *testing.T) {
 	})
 }
 
+func TestHTMLText(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"empty", "", ""},
+		{"plain unchanged", "hello world", "hello world"},
+		{"angle bracketed address", "From: Bob <b@x.com>", "From: Bob &lt;b@x.com&gt;"},
+		{"ampersand", "Tom & Jerry", "Tom &amp; Jerry"},
+		{"entity is not double decoded", "&amp;", "&amp;amp;"},
+		{"newline becomes break", "a\nb", "a<br>\nb"},
+		{"crlf becomes one break", "a\r\nb", "a<br>\nb"},
+		{"blank line preserved", "a\n\nb", "a<br>\n<br>\nb"},
+		{"quotes escaped", `say "hi" it's`, "say &#34;hi&#34; it&#39;s"},
+		{"non-ascii passes through", "héllo こんにちは", "héllo こんにちは"},
+		{"tag-shaped run", "<script>alert(1)</script>", "&lt;script&gt;alert(1)&lt;/script&gt;"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := HTMLText(tt.in); got != tt.want {
+				t.Errorf("HTMLText(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestMatchLabel(t *testing.T) {
+	labels := []*gmail.Label{
+		{Id: "INBOX", Name: "INBOX", Type: "system"},
+		{Id: "Label_7", Name: "Work", Type: "user"},
+		{Id: "Label_9", Name: "personal", Type: "user"},
+	}
+
+	tests := []struct {
+		name    string
+		labels  []*gmail.Label
+		in      string
+		wantID  string
+		wantErr string
+	}{
+		{"exact system id", labels, "INBOX", "INBOX", ""},
+		{"exact user name", labels, "Work", "Label_7", ""},
+		{"exact opaque id", labels, "Label_7", "Label_7", ""},
+		{"case-insensitive name", labels, "work", "Label_7", ""},
+		{"case-insensitive system id", labels, "inbox", "INBOX", ""},
+		{"case-insensitive opaque id", labels, "label_9", "Label_9", ""},
+		{"surrounding space", labels, "  Work  ", "Label_7", ""},
+		{"no match lists available", labels, "archive", "", "no label"},
+		{"empty is not a wildcard", labels, "", "", "no label"},
+		{"nil entries skipped", []*gmail.Label{nil, {Id: "Label_1", Name: "Bills"}}, "bills", "Label_1", ""},
+		{
+			"fold collision is ambiguous",
+			[]*gmail.Label{{Id: "Label_1", Name: "Work"}, {Id: "Label_2", Name: "work"}},
+			"WORK", "", "ambiguous",
+		},
+		{
+			"exact match wins over earlier fold match",
+			[]*gmail.Label{{Id: "Label_1", Name: "Work"}, {Id: "Label_2", Name: "work"}},
+			"work", "Label_2", "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := matchLabel(tt.labels, tt.in)
+			if tt.wantErr != "" {
+				if err == nil {
+					t.Fatalf("matchLabel(%q) = %q, want error containing %q", tt.in, got, tt.wantErr)
+				}
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("matchLabel(%q) error = %q, want it to contain %q", tt.in, err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("matchLabel(%q) unexpected error: %v", tt.in, err)
+			}
+			if got != tt.wantID {
+				t.Errorf("matchLabel(%q) = %q, want %q", tt.in, got, tt.wantID)
+			}
+		})
+	}
+
+	t.Run("no-match error names the available labels", func(t *testing.T) {
+		_, err := matchLabel(labels, "archive")
+		if err == nil {
+			t.Fatal("expected an error")
+		}
+		for _, want := range []string{"INBOX", "Work", "personal"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("error %q does not list %q", err, want)
+			}
+		}
+	})
+}
+
 func strptr(s string) *string    { return &s }
 func slptr(s []string) *[]string { return &s }
 

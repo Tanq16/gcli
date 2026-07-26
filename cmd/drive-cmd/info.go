@@ -30,7 +30,8 @@ var infoCmd = &cobra.Command{
 		if p, err := c.ResolveIDToPath(ctx, f.Id); err == nil {
 			path = "/" + p
 		}
-		u.PrintTable(infoRows(f, path))
+		headers, rows := infoRows(f, path)
+		u.PrintTableKeepFull(headers, rows, "VALUE")
 
 		if infoFlags.revisions {
 			printRevisions(ctx, c, f)
@@ -101,7 +102,7 @@ func printRevisions(ctx context.Context, c *drive.Client, f *driveapi.File) {
 		}
 		rows = append(rows, []string{r.Id, drive.FormatDriveTime(r.ModifiedTime), size, fmt.Sprintf("%v", r.KeepForever)})
 	}
-	u.PrintTable([]string{"REVISION", "MODIFIED", "SIZE", "KEPT"}, rows)
+	u.PrintTableKeepFull([]string{"REVISION", "MODIFIED", "SIZE", "KEPT"}, rows, "REVISION")
 }
 
 func init() {

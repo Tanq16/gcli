@@ -25,30 +25,31 @@ var uploadCmd = &cobra.Command{
 			remote = args[1]
 		}
 		res, err := drive.C().Upload(cmd.Context(), args[0], remote, uploadFlags.keepRevision)
-		if err != nil {
-			u.PrintFatal("upload failed", err)
-		}
-		reportTransfer(cmd.Context(), "uploaded", res)
+		finishTransfer(cmd.Context(), "upload", "uploaded", res, err)
 	},
 }
 
-// A cancelled run is a single warning + exit 130 (§9.4), not a per-item error dump.
-func reportTransfer(ctx context.Context, verb string, res *drive.TransferResult) {
+// Check cancellation first: it can surface as an error from the pre-transfer tree
+// walk, but must still be a warning + exit 130, never a fatal.
+func finishTransfer(ctx context.Context, verb, pastVerb string, res *drive.TransferResult, err error) {
 	if ctx.Err() != nil {
 		u.PrintWarn("cancelled — partial state remains", nil)
 		os.Exit(u.ExitCancelled)
+	}
+	if err != nil {
+		u.PrintFatal(verb+" failed", err)
 	}
 	for _, s := range res.Skipped {
 		u.PrintWarn("skipped "+s, nil)
 	}
 	if len(res.Errors) > 0 {
-		u.PrintError(fmt.Sprintf("%s completed with %d error(s): %d ok", verb, len(res.Errors), res.Files), nil)
+		u.PrintError(fmt.Sprintf("%s completed with %d error(s): %d ok", pastVerb, len(res.Errors), res.Files), nil)
 		for _, e := range res.Errors {
 			u.PrintIndentedError(e.RelPath, e.Err)
 		}
-		os.Exit(u.ExitPartial)
+		os.Exit(drive.ItemsExitCode(res.Files, res.Errors))
 	}
-	u.PrintSuccess(fmt.Sprintf("%s %d file(s), %s", verb, res.Files, u.FormatSize(res.Bytes)))
+	u.PrintSuccess(fmt.Sprintf("%s %d file(s), %s", pastVerb, res.Files, u.FormatSize(res.Bytes)))
 }
 
 func init() {

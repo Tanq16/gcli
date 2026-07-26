@@ -35,24 +35,30 @@ var purgeCmd = &cobra.Command{
 			}
 		}
 
-		failed := 0
+		purged := 0
+		var errs []error
 		for _, arg := range args {
+			// Without this an abort reports itself once per remaining argument.
+			if ctx.Err() != nil {
+				break
+			}
 			f, err := c.ResolveArg(ctx, arg)
 			if err != nil {
 				u.PrintError("failed to resolve "+arg, err)
-				failed++
+				errs = append(errs, err)
 				continue
 			}
 			if err := c.PurgeFile(ctx, f.Id); err != nil {
 				u.PrintError("failed to purge "+f.Name, err)
-				failed++
+				errs = append(errs, err)
 				continue
 			}
 			c.InvalidatePath(arg)
+			purged++
 			u.PrintSuccess("permanently deleted " + f.Name)
 		}
-		if failed > 0 {
-			os.Exit(u.ExitPartial)
+		if code := drive.BatchExitCode(purged, errs); code != 0 {
+			os.Exit(code)
 		}
 	},
 }

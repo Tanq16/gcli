@@ -1,7 +1,9 @@
 package mailCmd
 
 import (
+	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -36,7 +38,7 @@ var draftsListCmd = &cobra.Command{
 		for _, d := range drafts {
 			rows = append(rows, []string{d.ID, d.To, d.Subject, d.Updated})
 		}
-		u.PrintTable([]string{"ID", "TO", "SUBJECT", "UPDATED"}, rows)
+		u.PrintTableKeepFull([]string{"ID", "TO", "SUBJECT", "UPDATED"}, rows, "ID")
 	},
 }
 
@@ -115,6 +117,10 @@ var draftsEditCmd = &cobra.Command{
 			ov.Body, ov.ContentType = &body, &ct
 		} else {
 			body, err := u.PromptTextArea("Edit draft body:", "Draft body...", opts.Body)
+			if errors.Is(err, u.ErrPromptCancelled) {
+				u.PrintWarn("cancelled — draft unchanged", nil)
+				os.Exit(u.ExitCancelled)
+			}
 			if err != nil {
 				u.PrintFatal("failed to read body", err)
 			}
@@ -150,12 +156,29 @@ var draftsSendCmd = &cobra.Command{
 	},
 }
 
+var draftsRmFlags struct {
+	yes bool
+}
+
 var draftsRmCmd = &cobra.Command{
 	Use:     "rm <draft-id>",
 	Aliases: []string{"delete"},
-	Short:   "Delete a draft",
+	Short:   "Delete a draft permanently (not recoverable)",
 	Args:    cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
+		if !draftsRmFlags.yes {
+			if u.GlobalForAIFlag {
+				u.PrintFatalCode("refusing to delete draft without --yes in --for-ai mode", nil, u.ExitUsage)
+			}
+			answer, err := u.PromptInput("Permanently delete draft "+args[0]+"? Type 'yes' to confirm:", "yes/no")
+			if err != nil {
+				u.PrintFatal("failed to read confirmation", err)
+			}
+			if !strings.EqualFold(strings.TrimSpace(answer), "yes") {
+				u.PrintInfo("aborted")
+				return
+			}
+		}
 		if err := mail.DeleteDraft(args[0]); err != nil {
 			u.PrintFatal("failed to delete draft", err)
 		}
@@ -179,4 +202,6 @@ func init() {
 	draftsEditCmd.Flags().StringArrayVar(&draftsEditFlags.bcc, "bcc", nil, "BCC recipient (repeatable)")
 	draftsEditCmd.Flags().StringVarP(&draftsEditFlags.bodyFile, "body-file", "f", "", "Read body from file (.txt, .html)")
 	draftsEditCmd.Flags().StringArrayVarP(&draftsEditFlags.attach, "attach", "a", nil, "File attachment path to append (repeatable)")
+
+	draftsRmCmd.Flags().BoolVarP(&draftsRmFlags.yes, "yes", "y", false, "Skip confirmation prompt")
 }

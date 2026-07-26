@@ -29,13 +29,13 @@ var listCmd = &cobra.Command{
 			return
 		}
 
-		u.PrintTable([]string{"ID", "FROM", "SUBJECT", "DATE"}, threadRows(threads))
+		u.PrintTableKeepFull([]string{"ID", "FROM", "SUBJECT", "DATE"}, threadRows(threads), "ID")
 	},
 }
 
 func init() {
 	MailCmd.AddCommand(listCmd)
-	listCmd.Flags().StringVar(&listFlags.label, "label", "INBOX", "Label to list threads from")
+	listCmd.Flags().StringVar(&listFlags.label, "label", "INBOX", "Label name or ID to list threads from")
 	listCmd.Flags().BoolVar(&listFlags.unread, "unread", false, "Only show unread threads")
 	listCmd.Flags().Int64VarP(&listFlags.limit, "limit", "n", 20, "Maximum number of threads")
 }

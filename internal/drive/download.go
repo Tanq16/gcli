@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/md5"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -18,99 +17,74 @@ import (
 	driveapi "google.golang.org/api/drive/v3"
 )
 
-// The atomic .part + rename ensures an interrupted download never leaves a truncated file.
-func (c *Client) DownloadFile(ctx context.Context, f *driveapi.File, localPath string, prog *ByteProgress) error {
+// The retry wraps the whole body transfer, not just the handshake, so a reset
+// near the end of a large file reopens the stream and rewrites .part from offset 0.
+func fetchToFile(ctx context.Context, localPath, wantMD5, mtime string, prog *ByteProgress, open func() (*http.Response, error)) error {
 	if err := os.MkdirAll(filepath.Dir(localPath), 0o755); err != nil {
 		return err
 	}
-	resp, err := gapi.Retry(ctx, func() (*http.Response, error) {
-		return c.svc.Files.Get(f.Id).SupportsAllDrives(true).Context(ctx).Download()
+	part := localPath + ".part"
+	err := gapi.RetryErr(ctx, func() error {
+		resp, err := open()
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+		return writePart(part, wantMD5, resp.Body, prog)
 	})
 	if err != nil {
 		return gapi.HandleError(err)
 	}
-	defer resp.Body.Close()
+	if err := os.Rename(part, localPath); err != nil {
+		os.Remove(part)
+		return err
+	}
+	if t, terr := time.Parse(time.RFC3339Nano, mtime); terr == nil {
+		os.Chtimes(localPath, t, t)
+	}
+	return nil
+}
 
-	part := localPath + ".part"
+func writePart(part, wantMD5 string, body io.Reader, prog *ByteProgress) error {
 	out, err := os.Create(part)
 	if err != nil {
 		return err
 	}
 	h := md5.New()
-	dst := io.MultiWriter(out, h)
+	var dst io.Writer = io.MultiWriter(out, h)
 	if prog != nil {
 		dst = io.MultiWriter(out, h, prog.writer())
 	}
-	n, err := io.Copy(dst, resp.Body)
+	n, err := io.Copy(dst, body)
 	if cerr := out.Close(); err == nil {
 		err = cerr
 	}
-	if err == nil && f.Md5Checksum != "" && hex.EncodeToString(h.Sum(nil)) != f.Md5Checksum {
-		err = errors.New("md5 mismatch after download")
+	if err == nil && wantMD5 != "" && hex.EncodeToString(h.Sum(nil)) != wantMD5 {
+		err = gapi.ErrChecksumMismatch
 	}
 	if err != nil {
-		// These bytes were counted live as they streamed; roll them back so a failed download never inflates the byte total.
+		// These bytes were counted live as they streamed; roll them back so the
+		// retry restarting at offset 0 never double-counts them.
 		if prog != nil {
 			prog.doneBytes.Add(-n)
 		}
 		os.Remove(part)
 		return err
 	}
-	if err := os.Rename(part, localPath); err != nil {
-		os.Remove(part)
-		return err
-	}
-	if t, terr := time.Parse(time.RFC3339Nano, f.ModifiedTime); terr == nil {
-		os.Chtimes(localPath, t, t)
-	}
 	return nil
 }
 
-// Exports carry no checksum and no reliable size, so unlike DownloadFile there is no MD5 verify or byte weighting.
-func (c *Client) ExportFile(ctx context.Context, f *driveapi.File, localPath, format string, prog *ByteProgress) error {
-	mimeType, ext, err := exportTarget(f, format)
-	if err != nil {
-		return err
-	}
-	if ext != "" && !strings.HasSuffix(localPath, ext) {
-		localPath += ext
-	}
-	return c.exportTo(ctx, f, mimeType, localPath, prog)
+func (c *Client) DownloadFile(ctx context.Context, f *driveapi.File, localPath string, prog *ByteProgress) error {
+	return fetchToFile(ctx, localPath, f.Md5Checksum, f.ModifiedTime, prog, func() (*http.Response, error) {
+		return c.svc.Files.Get(f.Id).SupportsAllDrives(true).Context(ctx).Download()
+	})
 }
 
+// Exports carry no checksum, so the empty want disables verification.
 func (c *Client) exportTo(ctx context.Context, f *driveapi.File, exportMIME, localPath string, prog *ByteProgress) error {
-	if err := os.MkdirAll(filepath.Dir(localPath), 0o755); err != nil {
-		return err
-	}
-	resp, err := gapi.Retry(ctx, func() (*http.Response, error) {
+	return fetchToFile(ctx, localPath, "", f.ModifiedTime, prog, func() (*http.Response, error) {
 		return c.svc.Files.Export(f.Id, exportMIME).Context(ctx).Download()
 	})
-	if err != nil {
-		return gapi.HandleError(err)
-	}
-	defer resp.Body.Close()
-
-	part := localPath + ".part"
-	out, err := os.Create(part)
-	if err != nil {
-		return err
-	}
-	_, err = io.Copy(out, resp.Body)
-	if cerr := out.Close(); err == nil {
-		err = cerr
-	}
-	if err != nil {
-		os.Remove(part)
-		return err
-	}
-	if err := os.Rename(part, localPath); err != nil {
-		os.Remove(part)
-		return err
-	}
-	if t, terr := time.Parse(time.RFC3339Nano, f.ModifiedTime); terr == nil {
-		os.Chtimes(localPath, t, t)
-	}
-	return nil
 }
 
 func (c *Client) Cat(ctx context.Context, remoteArg, format string, out io.Writer) error {
@@ -180,11 +154,11 @@ func (c *Client) downloadSingle(ctx context.Context, f *driveapi.File, localArg,
 			return c.exportTo(ctx, f, mimeType, target, prog)
 		}}
 		errs := runTasks(ctx, c.Workers(), "downloading", []task{t}, prog)
-		return &TransferResult{Files: int(prog.doneFiles.Load()), Errors: errs}, nil
+		return &TransferResult{Files: int(prog.doneFiles.Load()), Bytes: prog.doneBytes.Load(), Errors: errs}, nil
 	}
 	target := destFile(localArg, f.Name, "")
 	prog := newByteProgress(1, f.Size)
-	t := task{relPath: f.Name, bytes: f.Size, run: func(ctx context.Context) error {
+	t := task{relPath: f.Name, run: func(ctx context.Context) error {
 		return c.DownloadFile(ctx, f, target, prog)
 	}}
 	errs := runTasks(ctx, c.Workers(), "downloading", []task{t}, prog)
@@ -199,6 +173,19 @@ type downloadItem struct {
 	exportMIME string
 }
 
+// A Workspace file has no size until it is exported, so any export in the batch
+// drops the whole thing to file-count weighting rather than a bar pegged at 100%.
+func batchTotalBytes(items []downloadItem) int64 {
+	var total int64
+	for _, it := range items {
+		if it.export {
+			return 0
+		}
+		total += it.file.Size
+	}
+	return total
+}
+
 func (c *Client) downloadFolder(ctx context.Context, folder *driveapi.File, localArg, format string) (*TransferResult, error) {
 	root := destDir(localArg, folder.Name)
 	if err := os.MkdirAll(root, 0o755); err != nil {
@@ -211,16 +198,10 @@ func (c *Client) downloadFolder(ctx context.Context, folder *driveapi.File, loca
 	if err := c.collectRemote(ctx, folder, root, root, format, &items, &skipped); err != nil {
 		return nil, err
 	}
-	var totalBytes int64
-	for _, it := range items {
-		if !it.export {
-			totalBytes += it.file.Size
-		}
-	}
-	prog := newByteProgress(len(items), totalBytes)
+	prog := newByteProgress(len(items), batchTotalBytes(items))
 	tasks := make([]task, len(items))
 	for i, it := range items {
-		tasks[i] = task{relPath: it.rel, bytes: it.file.Size, run: func(ctx context.Context) error {
+		tasks[i] = task{relPath: it.rel, run: func(ctx context.Context) error {
 			if it.export {
 				return c.exportTo(ctx, it.file, it.exportMIME, it.localPath, prog)
 			}

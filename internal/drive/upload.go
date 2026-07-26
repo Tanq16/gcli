@@ -149,7 +149,7 @@ func (c *Client) uploadSingle(ctx context.Context, localPath string, size int64,
 		return nil, err
 	}
 	prog := newByteProgress(1, size)
-	t := task{relPath: name, bytes: size, run: func(ctx context.Context) error {
+	t := task{relPath: name, run: func(ctx context.Context) error {
 		return c.putFile(ctx, localPath, dest.Id, existingID, keepRevision, prog)
 	}}
 	errs := runTasks(ctx, c.Workers(), "uploading", []task{t}, prog)
@@ -246,7 +246,7 @@ func (c *Client) uploadFolder(ctx context.Context, localRoot, remoteArg string, 
 	prog := newByteProgress(len(items), totalBytes)
 	tasks := make([]task, len(items))
 	for i, it := range items {
-		tasks[i] = task{relPath: it.rel, bytes: it.size, run: func(ctx context.Context) error {
+		tasks[i] = task{relPath: it.rel, run: func(ctx context.Context) error {
 			return c.putFile(ctx, it.localPath, it.parentID, it.existingID, keepRevision, prog)
 		}}
 	}
@@ -277,7 +277,7 @@ func (c *Client) uploadTarget(ctx context.Context, name, parentID string, cor co
 		return files[0].Id, nil
 	}
 	if !interactive {
-		return "", notFoundErr("multiple remote files named '%s' — resolve with --id", name)
+		return "", usageErr("multiple remote files named '%s' — resolve with --id", name)
 	}
 	f, err := c.chooseDuplicate(name, files)
 	if err != nil {

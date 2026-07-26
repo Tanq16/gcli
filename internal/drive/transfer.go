@@ -12,7 +12,6 @@ import (
 
 type task struct {
 	relPath string
-	bytes   int64
 	run     func(ctx context.Context) error
 }
 
@@ -52,7 +51,8 @@ func (w byteCounter) Write(b []byte) (int, error) {
 	return len(b), nil
 }
 
-// Exports report no size, so a fully-export batch falls back to file-count weighting.
+// Exports report no size, so a batch holding any of them passes totalBytes 0 and
+// falls back to file-count weighting.
 func (p *ByteProgress) percent() int {
 	switch {
 	case p.totalBytes > 0:
@@ -66,8 +66,11 @@ func (p *ByteProgress) percent() int {
 
 func (p *ByteProgress) render(verb string) (string, int) {
 	label := fmt.Sprintf("%s %d/%d files", verb, p.doneFiles.Load(), p.totalFiles)
-	if p.totalBytes > 0 {
-		label += fmt.Sprintf(" (%s / %s)", u.FormatSize(p.doneBytes.Load()), u.FormatSize(p.totalBytes))
+	switch done := p.doneBytes.Load(); {
+	case p.totalBytes > 0:
+		label += fmt.Sprintf(" (%s / %s)", u.FormatSize(done), u.FormatSize(p.totalBytes))
+	case done > 0:
+		label += fmt.Sprintf(" (%s)", u.FormatSize(done))
 	}
 	return label, p.percent()
 }

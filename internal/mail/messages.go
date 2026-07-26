@@ -24,7 +24,11 @@ type ThreadSummary struct {
 }
 
 func ListThreads(ctx context.Context, label string, unread bool, count int64) ([]ThreadSummary, error) {
-	call := Service.Users.Threads.List("me").LabelIds(label).MaxResults(count)
+	labelID, err := resolveLabelID(ctx, label)
+	if err != nil {
+		return nil, err
+	}
+	call := Service.Users.Threads.List("me").LabelIds(labelID).MaxResults(count)
 	if unread {
 		call = call.Q("is:unread")
 	}
@@ -35,6 +39,51 @@ func ListThreads(ctx context.Context, label string, unread bool, count int64) ([
 	}
 
 	return fetchThreadSummaries(ctx, resp.Threads)
+}
+
+// Gmail's labelIds parameter takes opaque IDs (a user label is "Label_7"), so a sidebar
+// name has to be translated or the call 400s with no detail.
+func resolveLabelID(ctx context.Context, want string) (string, error) {
+	resp, err := Service.Users.Labels.List("me").Context(ctx).Do()
+	if err != nil {
+		return "", gapi.HandleError(err)
+	}
+	return matchLabel(resp.Labels, want)
+}
+
+func matchLabel(labels []*gmail.Label, want string) (string, error) {
+	want = strings.TrimSpace(want)
+	var folded []*gmail.Label
+	for _, l := range labels {
+		if l == nil {
+			continue
+		}
+		if l.Id == want || l.Name == want {
+			return l.Id, nil
+		}
+		if strings.EqualFold(l.Id, want) || strings.EqualFold(l.Name, want) {
+			folded = append(folded, l)
+		}
+	}
+	switch len(folded) {
+	case 1:
+		return folded[0].Id, nil
+	case 0:
+		return "", fmt.Errorf("no label %q — available: %s", want, strings.Join(labelNames(labels), ", "))
+	default:
+		return "", fmt.Errorf("label %q is ambiguous (%s) — pass the exact name or ID", want, strings.Join(labelNames(folded), ", "))
+	}
+}
+
+func labelNames(labels []*gmail.Label) []string {
+	names := make([]string, 0, len(labels))
+	for _, l := range labels {
+		if l != nil && l.Name != "" {
+			names = append(names, l.Name)
+		}
+	}
+	slices.Sort(names)
+	return names
 }
 
 func SearchThreads(ctx context.Context, query string, max int64) ([]ThreadSummary, error) {

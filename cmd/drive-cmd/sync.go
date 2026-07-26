@@ -55,24 +55,36 @@ var syncCmd = &cobra.Command{
 		}
 		reportSync(res, syncFlags.reverse)
 		if len(res.Errors) > 0 {
-			os.Exit(u.ExitPartial)
+			// Files left correctly mirrored count as work done, so an every-item
+			// failure still reports its real cause instead of partial.
+			done := res.Created + res.Updated + res.Touched + res.Deleted + res.Unchanged
+			os.Exit(drive.ItemsExitCode(done, res.Errors))
 		}
 	},
 }
 
 func confirmDeletes(deletes []drive.Item) (bool, error) {
-	u.PrintWarn(fmt.Sprintf("%d item(s) on the destination are not on the source and will be deleted:", len(deletes)), nil)
+	files := drive.DeleteFileCount(deletes)
+	u.PrintWarn(fmt.Sprintf("%d path(s) covering %d file(s) on the destination are not on the source and will be deleted:",
+		len(deletes), files), nil)
 	for _, d := range deletes {
-		u.PrintInfo("  delete " + d.RelPath)
+		u.PrintInfo("  delete " + deleteLabel(d))
 	}
 	if u.GlobalForAIFlag {
 		u.PrintFatalCode("refusing to delete without --yes in --for-ai mode", nil, u.ExitUsage)
 	}
-	ans, err := u.PromptInput(fmt.Sprintf("Delete %d item(s)? Type 'yes' to confirm:", len(deletes)), "yes/no")
+	ans, err := u.PromptInput(fmt.Sprintf("Delete %d file(s) under %d path(s)? Type 'yes' to confirm:", files, len(deletes)), "yes/no")
 	if err != nil {
 		return false, err
 	}
 	return strings.EqualFold(strings.TrimSpace(ans), "yes"), nil
+}
+
+func deleteLabel(it drive.Item) string {
+	if !it.IsDir {
+		return it.RelPath
+	}
+	return fmt.Sprintf("%s/ (folder, %d file(s), recursive)", it.RelPath, it.Descendants)
 }
 
 func planCounts(p *drive.Plan) (creates, updates, touches int) {
@@ -95,8 +107,8 @@ func reportDryRun(res *drive.SyncResult, reverse bool) {
 		verb = "download"
 	}
 	creates, updates, touches := planCounts(res.Plan)
-	u.PrintInfo(fmt.Sprintf("dry run: %d %s, %d update, %d touch, %d delete, %d unchanged",
-		creates, verb, updates, touches, len(res.Plan.Deletes), res.Unchanged))
+	u.PrintInfo(fmt.Sprintf("dry run: %d %s, %d update, %d touch, %d delete (%d file(s)), %d unchanged",
+		creates, verb, updates, touches, len(res.Plan.Deletes), drive.DeleteFileCount(res.Plan.Deletes), res.Unchanged))
 	for _, d := range res.Plan.MkDirs {
 		u.PrintInfo("  mkdir " + d)
 	}
@@ -104,7 +116,7 @@ func reportDryRun(res *drive.SyncResult, reverse bool) {
 		u.PrintInfo("  " + opLabel(it.Op) + " " + it.RelPath)
 	}
 	for _, it := range res.Plan.Deletes {
-		u.PrintInfo("  delete " + it.RelPath)
+		u.PrintInfo("  delete " + deleteLabel(it))
 	}
 	reportSkipped(res.Skipped)
 }
@@ -129,8 +141,14 @@ func reportSync(res *drive.SyncResult, reverse bool) {
 		moved = "downloaded"
 		deleted = "removed"
 	}
-	summary := fmt.Sprintf("%d %s, %d updated, %d touched, %d %s, %d unchanged",
-		res.Created, moved, res.Updated, res.Touched, res.Deleted, deleted, res.Unchanged)
+	// A collapsed subtree is one path but many files, so the file count is spelled
+	// out whenever it exceeds the path count the delete gate listed.
+	deletedPart := fmt.Sprintf("%d %s", res.Deleted, deleted)
+	if res.DeletedFiles > res.Deleted {
+		deletedPart = fmt.Sprintf("%d %s (%d file(s))", res.Deleted, deleted, res.DeletedFiles)
+	}
+	summary := fmt.Sprintf("%d %s, %d updated, %d touched, %s, %d unchanged",
+		res.Created, moved, res.Updated, res.Touched, deletedPart, res.Unchanged)
 
 	if len(res.Errors) > 0 {
 		u.PrintError(fmt.Sprintf("sync completed with %d error(s): %s", len(res.Errors), summary), nil)
@@ -142,7 +160,7 @@ func reportSync(res *drive.SyncResult, reverse bool) {
 	}
 	reportSkipped(res.Skipped)
 	if res.LocalTrashed > 0 {
-		u.PrintInfo(fmt.Sprintf("note: %d local file(s) not on remote were moved to .trash.gcli/", res.LocalTrashed))
+		u.PrintInfo(fmt.Sprintf("note: %d local path(s) not on remote were moved to .trash.gcli/", res.LocalTrashed))
 	}
 }
 

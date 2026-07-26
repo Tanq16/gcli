@@ -36,7 +36,8 @@ var trashListCmd = &cobra.Command{
 			u.PrintInfo("trash is empty")
 			return
 		}
-		u.PrintTable(trashColumns(files, trashListFlags.withID))
+		headers, rows := trashColumns(files, trashListFlags.withID)
+		u.PrintTableKeepFull(headers, rows, "ID")
 	},
 }
 

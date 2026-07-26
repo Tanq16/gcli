@@ -91,7 +91,7 @@ All optional; set the pair to skip `credentials.json`, add the refresh token to 
 | `GCLI_REFRESH_TOKEN` | Token without `token.json` — fully headless with the pair above |
 | `GCLI_CONFIG_DIR` | Repoint the whole config directory (the multi-account escape hatch) |
 
-Under `--for-ai`, `gcli login` prints the authorization URL (it never tries to open a browser) and reads the pasted redirect URL — or bare code — from piped stdin; for a fully unattended agent, prefer the env vars above.
+`gcli login` is the one command that requires a terminal — the PKCE verifier is minted in the running process, so a code pasted into a later invocation can never match it. Under `--for-ai` it refuses with exit 2 rather than printing a URL that cannot be completed. For unattended agents, use the env vars above; `gcli login --setup --client-id ... --client-secret ...` stays fully non-interactive and works under `--for-ai`.
 
 ## Usage
 
@@ -126,7 +126,7 @@ gcli                                    --debug | --for-ai   (root, mutually exc
     ├── reply           <thread-id>      --all -a -f --signature --draft
     ├── forward         <thread-id>      -t -a -f --signature --draft
     ├── mark            <verb> <thread-id>   (read unread star unstar archive trash spam)
-    └── drafts (draft)  list · get <id> · edit <id> -t -s -c --bcc -f -a · send <id> · rm <id>
+    └── drafts (draft)  list · get <id> · edit <id> -t -s -c --bcc -f -a · send <id> · rm <id> [--yes/-y]
 ```
 
 ### Drive-persistent flags
@@ -235,7 +235,7 @@ When a path segment is ambiguous (duplicate sibling names), human mode prompts y
 ```bash
 gcli mail list                                 # recent INBOX threads
 gcli mail list --unread --limit 5
-gcli mail list --label SENT
+gcli mail list --label SENT                     # a system label, a user label name, or a raw label ID
 gcli mail search "from:alice@example.com" -n 50
 gcli mail get <thread-id>                       # full thread; HTML rendered to text
 gcli mail get <thread-id> --with-quote
@@ -262,10 +262,10 @@ gcli mail drafts list
 gcli mail drafts get r-8123...
 gcli mail drafts edit r-8123... -s "Q3 numbers (final)" -a ./chart.png
 gcli mail drafts send r-8123...
-gcli mail drafts rm r-8123...
+gcli mail drafts rm r-8123... -y             # permanent; prompts without -y
 ```
 
-`drafts edit` overlays only the flags you set (`-s ""` clears the subject; omitted flags carry forward), and `-a` appends attachments.
+`drafts edit` overlays only the flags you set (`-s ""` clears the subject; omitted flags carry forward), and `-a` appends attachments. Cancelling the body editor with Esc aborts the edit and leaves the draft untouched. `drafts rm` is a permanent Gmail delete, not a trash — it confirms first unless you pass `--yes/-y`.
 
 ### Old → new migration
 
@@ -324,16 +324,15 @@ Every command speaks three mutually exclusive tiers, set by root flags:
 | 3 | Auth failure |
 | 4 | Not found (path/ID/thread/draft) |
 | 5 | Permission denied |
-| 6 | Partial success (some items in a batch failed) |
+| 6 | Partial success (a batch with **mixed** outcomes — if every item failed for the same reason, that reason's code is returned instead) |
 | 7 | Rate-limited after retries exhausted |
-| 130 | Cancelled (Ctrl+C / context cancelled) |
+| 130 | Cancelled (Ctrl+C, Esc at a prompt, or context cancelled) |
 
-**The invisible rule:** every prompt has a flag or stdin equivalent, so `--for-ai` is fully non-interactive. Deletes take `--yes`; the login code and mail bodies read from piped stdin; ambiguity resolves via `--id`.
+**The invisible rule:** every prompt has a flag or stdin equivalent, so `--for-ai` is fully non-interactive. Deletes take `--yes`; mail bodies read from piped stdin; ambiguity resolves via `--id`. The sole exception is `login`, which is interactive by nature and refuses under `--for-ai` — authenticate once in a terminal, or supply the env vars above.
 
 ```bash
-# fully headless: env-var auth, piped redirect URL (or bare code), no prompts
-export GCLI_CLIENT_ID=... GCLI_CLIENT_SECRET=...
-printf '%s\n' "$REDIRECT_URL" | gcli --for-ai login
+# fully headless: env-var auth, no prompts
+export GCLI_CLIENT_ID=... GCLI_CLIENT_SECRET=... GCLI_REFRESH_TOKEN=...
 gcli drive sync ~/backup /backups --yes --for-ai
 gcli drive cat /reports/latest.json --for-ai | jq .
 ```

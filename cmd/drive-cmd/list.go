@@ -48,7 +48,8 @@ var listCmd = &cobra.Command{
 			}
 		}
 
-		u.PrintTable(fileColumns(files, listFlags.withID))
+		headers, rows := fileColumns(files, listFlags.withID)
+		u.PrintTableKeepFull(headers, rows, "ID")
 	},
 }
 

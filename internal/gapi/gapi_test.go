@@ -3,8 +3,13 @@ package gapi
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
+	"os"
+	"syscall"
 	"testing"
 	"time"
 
@@ -105,7 +110,10 @@ func (timeoutErr) Error() string   { return "timeout" }
 func (timeoutErr) Timeout() bool   { return true }
 func (timeoutErr) Temporary() bool { return true }
 
+// The mid-stream shapes matter most: a body read that dies late arrives as a
+// *net.OpError with Timeout() false, wrapped in *url.Error by the http client.
 func TestRetryable(t *testing.T) {
+	reset := &net.OpError{Op: "read", Net: "tcp", Err: os.NewSyscallError("read", syscall.ECONNRESET)}
 	tests := []struct {
 		name string
 		err  error
@@ -120,6 +128,17 @@ func TestRetryable(t *testing.T) {
 		{"net timeout", timeoutErr{}, true},
 		{"unexpected eof", io.ErrUnexpectedEOF, true},
 		{"plain", errors.New("nope"), false},
+		{"nil", nil, false},
+		{"connection reset mid-body", reset, true},
+		{"connection reset through url.Error", &url.Error{Op: "Get", URL: "https://x", Err: reset}, true},
+		{"bare econnreset", syscall.ECONNRESET, true},
+		{"broken pipe", syscall.EPIPE, true},
+		{"connection refused", &net.OpError{Op: "dial", Err: syscall.ECONNREFUSED}, true},
+		{"checksum mismatch", ErrChecksumMismatch, true},
+		{"wrapped checksum mismatch", fmt.Errorf("photos/a.raw: %w", ErrChecksumMismatch), true},
+		{"cancelled", context.Canceled, false},
+		{"cancelled through url.Error", &url.Error{Op: "Get", URL: "https://x", Err: context.Canceled}, false},
+		{"cancelled mid-body read", &net.OpError{Op: "read", Err: context.Canceled}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

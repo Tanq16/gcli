@@ -3,7 +3,6 @@ package driveCmd
 import (
 	"github.com/spf13/cobra"
 	"github.com/tanq16/gcli/internal/drive"
-	u "github.com/tanq16/gcli/utils"
 )
 
 var downloadFlags struct {
@@ -26,18 +25,12 @@ var downloadCmd = &cobra.Command{
 
 		if downloadFlags.revision != "" {
 			res, err := c.DownloadRev(ctx, args[0], local, downloadFlags.revision)
-			if err != nil {
-				u.PrintFatal("download failed", err)
-			}
-			reportTransfer(ctx, "downloaded", res)
+			finishTransfer(ctx, "download", "downloaded", res, err)
 			return
 		}
 
 		res, err := c.Download(ctx, args[0], local, downloadFlags.format)
-		if err != nil {
-			u.PrintFatal("download failed", err)
-		}
-		reportTransfer(ctx, "downloaded", res)
+		finishTransfer(ctx, "download", "downloaded", res, err)
 	},
 }
 

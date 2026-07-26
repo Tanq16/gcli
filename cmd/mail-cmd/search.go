@@ -25,7 +25,7 @@ var searchCmd = &cobra.Command{
 			return
 		}
 
-		u.PrintTable([]string{"ID", "FROM", "SUBJECT", "DATE"}, threadRows(threads))
+		u.PrintTableKeepFull([]string{"ID", "FROM", "SUBJECT", "DATE"}, threadRows(threads), "ID")
 	},
 }
 

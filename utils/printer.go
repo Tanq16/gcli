@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -56,6 +57,10 @@ func PrintSuccess(msg string) {
 }
 
 func PrintError(msg string, err error) {
+	if isCancelled(err) {
+		PrintWarn("cancelled", nil)
+		return
+	}
 	if GlobalDebugFlag {
 		log.Error().Err(err).Msg(msg)
 	} else if GlobalForAIFlag {
@@ -77,20 +82,38 @@ func PrintFatal(msg string, err error) {
 	os.Exit(exitCodeFor(err))
 }
 
-// For failures classification cannot infer (usage, partial, auth-at-PreRun).
+// For failures classification cannot infer (usage, partial, auth-at-PreRun). An abort
+// outranks the caller's code, since PrintError already reported it as "cancelled".
 func PrintFatalCode(msg string, err error, code int) {
 	PrintError(msg, err)
+	if exitCodeFor(err) == ExitCancelled {
+		code = ExitCancelled
+	}
 	os.Exit(code)
 }
 
+type exitCoder interface {
+	error
+	ExitCode() int
+}
+
 func exitCodeFor(err error) int {
-	if err != nil {
-		var coded interface{ ExitCode() int }
-		if errors.As(err, &coded) {
-			return coded.ExitCode()
-		}
+	if err == nil {
+		return ExitGeneric
+	}
+	if coded, ok := errors.AsType[exitCoder](err); ok {
+		return coded.ExitCode()
+	}
+	if isCancelled(err) {
+		return ExitCancelled
 	}
 	return ExitGeneric
+}
+
+// A ctx-cancelled API call surfaces as a transport error wrapping context.Canceled,
+// whose URL noise says nothing the user needs; report the abort itself.
+func isCancelled(err error) bool {
+	return err != nil && (errors.Is(err, context.Canceled) || errors.Is(err, ErrPromptCancelled))
 }
 
 func PrintWarn(msg string, err error) {

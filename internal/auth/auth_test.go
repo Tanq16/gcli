@@ -20,6 +20,11 @@ func TestExtractCode(t *testing.T) {
 		{"percent-encoded code", "4%2F0Axxenc", "4/0Axxenc"},
 		{"redirect url encoded code", "http://127.0.0.1/?state=abc&code=4%2F0Axxq", "4/0Axxq"},
 		{"empty", "", ""},
+		{"denied consent redirect", "http://127.0.0.1/?error=access_denied&state=abc", ""},
+		{"admin-blocked redirect", "http://127.0.0.1/?error=admin_policy_enforced", ""},
+		{"redirect with no query at all", "http://127.0.0.1/", ""},
+		{"authorization url pasted back", "https://accounts.google.com/o/oauth2/auth?client_id=x&state=abc", ""},
+		{"bare code containing a plus", "4/0Axx+bcd", "4/0Axx+bcd"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -92,6 +97,30 @@ func TestMissingScopes(t *testing.T) {
 			got := missingScopes(req, tt.have)
 			if !slices.Equal(got, tt.want) {
 				t.Fatalf("missingScopes(%v, %v) = %v, want %v", req, tt.have, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestScopesFromToken(t *testing.T) {
+	config := &oauth2.Config{Scopes: []string{"cfg-a", "cfg-b"}}
+	tests := []struct {
+		name  string
+		extra map[string]any
+		want  []string
+	}{
+		{"full grant", map[string]any{"scope": "drive gmail.modify"}, []string{"drive", "gmail.modify"}},
+		{"partial grant", map[string]any{"scope": "drive"}, []string{"drive"}},
+		{"blank scope falls back to requested", map[string]any{"scope": "   "}, []string{"cfg-a", "cfg-b"}},
+		{"non-string scope falls back to requested", map[string]any{"scope": 42}, []string{"cfg-a", "cfg-b"}},
+		{"absent scope falls back to requested", map[string]any{}, []string{"cfg-a", "cfg-b"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			token := (&oauth2.Token{AccessToken: "acc"}).WithExtra(tt.extra)
+			got := scopesFromToken(token, config)
+			if !slices.Equal(got, tt.want) {
+				t.Fatalf("scopesFromToken(%v) = %v, want %v", tt.extra, got, tt.want)
 			}
 		})
 	}

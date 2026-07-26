@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"syscall"
 	"time"
 
 	"google.golang.org/api/googleapi"
@@ -19,6 +20,10 @@ const (
 	maxDelay      = 16 * time.Second
 	maxRetryAfter = 2 * time.Minute
 )
+
+// Transfers that verify their payload report a mismatch with this so the retry loop
+// re-fetches instead of failing the item.
+var ErrChecksumMismatch = errors.New("checksum mismatch after transfer")
 
 // On exhaustion returns the last error; ctx cancellation during a backoff returns ctx.Err().
 func Retry[T any](ctx context.Context, fn func() (T, error)) (T, error) {
@@ -49,16 +54,26 @@ func RetryErr(ctx context.Context, fn func() error) error {
 	return err
 }
 
+// Mid-stream body failures (resets, broken pipes, truncated reads, corrupt payloads) are
+// transient, so they retry alongside rate limits and 5xx; callers restart at offset 0.
 func retryable(err error) bool {
+	if err == nil || errors.Is(err, context.Canceled) {
+		return false
+	}
 	if gerr, ok := errors.AsType[*googleapi.Error](err); ok {
 		kind, _ := classify(gerr)
 		return kind == KindRateLimited || kind == KindServer
 	}
-	var nerr net.Error
-	if errors.As(err, &nerr) && nerr.Timeout() {
+	if _, ok := errors.AsType[*net.OpError](err); ok {
 		return true
 	}
-	return errors.Is(err, io.ErrUnexpectedEOF)
+	if nerr, ok := errors.AsType[net.Error](err); ok && nerr.Timeout() {
+		return true
+	}
+	return errors.Is(err, ErrChecksumMismatch) ||
+		errors.Is(err, io.ErrUnexpectedEOF) ||
+		errors.Is(err, syscall.ECONNRESET) ||
+		errors.Is(err, syscall.EPIPE)
 }
 
 func delayFor(err error, attempt int) time.Duration {

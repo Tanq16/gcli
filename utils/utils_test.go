@@ -1,8 +1,10 @@
 package utils
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -120,7 +122,7 @@ func TestBoundTable(t *testing.T) {
 	rows := [][]string{{"short", "verylongvaluethatoverflows"}}
 
 	t.Run("shrinks widest when over budget", func(t *testing.T) {
-		_, out := boundTable(headers, rows, 20)
+		_, out := boundTable(headers, rows, 20, nil)
 		if !strings.Contains(out[0][1], "…") {
 			t.Fatalf("expected widest column truncated, got %q", out[0][1])
 		}
@@ -130,25 +132,105 @@ func TestBoundTable(t *testing.T) {
 	})
 
 	t.Run("no change when it fits", func(t *testing.T) {
-		_, out := boundTable(headers, rows, 200)
+		_, out := boundTable(headers, rows, 200, nil)
 		if out[0][1] != "verylongvaluethatoverflows" {
 			t.Fatalf("expected unchanged cell, got %q", out[0][1])
 		}
 	})
 
 	t.Run("pads ragged rows", func(t *testing.T) {
-		_, out := boundTable(headers, [][]string{{"only-one"}}, 200)
+		_, out := boundTable(headers, [][]string{{"only-one"}}, 200, nil)
 		if len(out[0]) != 2 {
 			t.Fatalf("expected row padded to 2 columns, got %d", len(out[0]))
 		}
 	})
 
 	t.Run("empty headers", func(t *testing.T) {
-		h, r := boundTable(nil, rows, 20)
+		h, r := boundTable(nil, rows, 20, nil)
 		if h != nil || len(r) != len(rows) {
 			t.Fatalf("expected passthrough for empty headers")
 		}
 	})
+}
+
+func TestBoundTableProtected(t *testing.T) {
+	const driveID = "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
+	headers := []string{"TYPE", "NAME", "SIZE", "MODIFIED", "ID"}
+	row := []string{"file", "quarterly-report-2026-final.pdf", "1.2 MB", "2026-01-02 10:11", driveID}
+	protected := protectedCols(headers, []string{"ID"})
+
+	t.Run("id survives an 80-column terminal", func(t *testing.T) {
+		_, out := boundTable(headers, [][]string{row}, 80, protected)
+		if out[0][4] != driveID {
+			t.Fatalf("ID truncated to %q, want the full %q", out[0][4], driveID)
+		}
+		if !strings.Contains(out[0][1], "…") {
+			t.Fatalf("expected NAME to absorb the shrink, got %q", out[0][1])
+		}
+	})
+
+	t.Run("unprotected run is truncated at the same width", func(t *testing.T) {
+		_, out := boundTable(headers, [][]string{row}, 80, nil)
+		if out[0][4] == driveID {
+			t.Fatalf("expected the unprotected ID to be truncated at width 80")
+		}
+	})
+
+	t.Run("terminal narrower than the protected column", func(t *testing.T) {
+		_, out := boundTable(headers, [][]string{row}, 40, protected)
+		for i, cell := range out[0] {
+			if i == 4 {
+				continue
+			}
+			if w := lipgloss.Width(cell); w > colFloor {
+				t.Fatalf("column %d width = %d, want every unprotected column at the floor before ID shrinks", i, w)
+			}
+		}
+		if lipgloss.Width(out[0][4]) <= colFloor {
+			t.Fatalf("ID shrank past the other columns: %q", out[0][4])
+		}
+	})
+
+	t.Run("unknown header names protect nothing", func(t *testing.T) {
+		if got := protectedCols(headers, []string{"REVISION"}); slices.Contains(got, true) {
+			t.Fatalf("protectedCols matched a header that is not present: %v", got)
+		}
+	})
+}
+
+type codedErr struct{ code int }
+
+func (e codedErr) Error() string { return "coded" }
+
+func (e codedErr) ExitCode() int { return e.code }
+
+func TestExitCodeFor(t *testing.T) {
+	cancelledCtx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	tests := []struct {
+		name string
+		err  error
+		want int
+	}{
+		{"nil", nil, ExitGeneric},
+		{"plain", errors.New("boom"), ExitGeneric},
+		{"coded", codedErr{ExitNotFound}, ExitNotFound},
+		{"wrapped coded", fmt.Errorf("resolve: %w", codedErr{ExitPermission}), ExitPermission},
+		{"context canceled", cancelledCtx.Err(), ExitCancelled},
+		{"wrapped context canceled", fmt.Errorf(`Get "https://www.googleapis.com/drive/v3/files": %w`, context.Canceled), ExitCancelled},
+		{"prompt cancelled", ErrPromptCancelled, ExitCancelled},
+		{"wrapped prompt cancelled", fmt.Errorf("input error: %w", ErrPromptCancelled), ExitCancelled},
+		{"deadline exceeded stays generic", context.DeadlineExceeded, ExitGeneric},
+		{"coded wins over cancellation", fmt.Errorf("%w: %w", codedErr{ExitRateLimited}, context.Canceled), ExitRateLimited},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := exitCodeFor(tt.err); got != tt.want {
+				t.Fatalf("exitCodeFor(%v) = %d, want %d", tt.err, got, tt.want)
+			}
+		})
+	}
 }
 
 func TestFormatSize(t *testing.T) {

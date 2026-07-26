@@ -17,6 +17,10 @@ import (
 // Guard the TUI prompts: bubbletea leaks a raw "/dev/tty: no such device" error under cron/CI/ssh-without-a-tty, so refuse cleanly and point at the non-interactive path.
 var errNoTTY = errors.New("no interactive terminal — re-run with --for-ai and pipe the value, or skip the prompt with the relevant flag")
 
+// Callers must tell an aborted prompt from a legitimately empty submission, since they
+// write the latter over live data.
+var ErrPromptCancelled = errors.New("cancelled")
+
 func interactive() bool {
 	return term.IsTerminal(int(os.Stdin.Fd()))
 }
@@ -59,6 +63,7 @@ func ReadPipedLine() string {
 type inputModel struct {
 	textInput textinput.Model
 	done      bool
+	cancelled bool
 	value     string
 	initCmd   tea.Cmd
 }
@@ -77,6 +82,7 @@ func (m inputModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.done = true
 			return m, tea.Quit
 		case "ctrl+c", "esc":
+			m.cancelled = true
 			m.done = true
 			return m, tea.Quit
 		}
@@ -110,7 +116,11 @@ func PromptInput(prompt string, placeholder string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return strings.TrimSpace(finalModel.(inputModel).value), nil
+	result := finalModel.(inputModel)
+	if result.cancelled {
+		return "", ErrPromptCancelled
+	}
+	return strings.TrimSpace(result.value), nil
 }
 
 func PromptPassword(prompt string) (string, error) {
@@ -132,14 +142,19 @@ func PromptPassword(prompt string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return finalModel.(inputModel).value, nil
+	result := finalModel.(inputModel)
+	if result.cancelled {
+		return "", ErrPromptCancelled
+	}
+	return result.value, nil
 }
 
 type textAreaModel struct {
-	textarea textarea.Model
-	done     bool
-	value    string
-	initCmd  tea.Cmd
+	textarea  textarea.Model
+	done      bool
+	cancelled bool
+	value     string
+	initCmd   tea.Cmd
 }
 
 func (m textAreaModel) Init() tea.Cmd {
@@ -159,6 +174,7 @@ func (m textAreaModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.done = true
 			return m, tea.Quit
 		case "ctrl+c", "esc":
+			m.cancelled = true
 			m.done = true
 			return m, tea.Quit
 		}
@@ -200,7 +216,11 @@ func PromptTextArea(prompt string, placeholder string, initial string) (string, 
 	if err != nil {
 		return "", err
 	}
-	return strings.TrimSpace(finalModel.(textAreaModel).value), nil
+	result := finalModel.(textAreaModel)
+	if result.cancelled {
+		return "", ErrPromptCancelled
+	}
+	return strings.TrimSpace(result.value), nil
 }
 
 var (

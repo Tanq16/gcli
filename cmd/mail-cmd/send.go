@@ -1,6 +1,7 @@
 package mailCmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -107,6 +108,10 @@ func resolveBody(bodyFile string, required bool) (string, string) {
 		return "", "text/plain"
 	}
 	body, err := u.PromptTextArea("Compose message body:", "Type your message here...", "")
+	if errors.Is(err, u.ErrPromptCancelled) {
+		u.PrintWarn("cancelled — nothing was sent", nil)
+		os.Exit(u.ExitCancelled)
+	}
 	if err != nil {
 		u.PrintFatal("failed to read body", err)
 	}
@@ -122,16 +127,20 @@ func applySignature(body string, contentType string, sigFlag string) (string, st
 	}
 
 	sig, err := mail.GetSignature(sigFlag)
-	if err != nil || sig == "" {
+	if err != nil {
+		// The default lookup errors for any account with no signature at all, so only
+		// a named alias is a real failure — and a send cannot be undone.
+		if sigFlag != "default" {
+			u.PrintFatal(fmt.Sprintf("failed to resolve signature for %q", sigFlag), err)
+		}
+		return body, contentType
+	}
+	if sig == "" {
 		return body, contentType
 	}
 
 	if contentType == "text/plain" {
-		escaped := strings.ReplaceAll(body, "&", "&amp;")
-		escaped = strings.ReplaceAll(escaped, "<", "&lt;")
-		escaped = strings.ReplaceAll(escaped, ">", "&gt;")
-		escaped = strings.ReplaceAll(escaped, "\n", "<br>\n")
-		body = "<div>" + escaped + "</div>"
+		body = "<div>" + mail.HTMLText(body) + "</div>"
 		contentType = "text/html"
 	}
 

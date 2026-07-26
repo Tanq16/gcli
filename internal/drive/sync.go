@@ -68,20 +68,41 @@ const (
 
 // Src is the source-side entry (zero for deletes), Dst the destination-side entry
 // (zero for creates). Op is direction-agnostic; the executor interprets it per direction.
+// Descendants is the file count a collapsed directory delete takes with it.
 type Item struct {
-	Op      Op
-	RelPath string
-	Src     Entry
-	Dst     Entry
+	Op          Op
+	RelPath     string
+	Src         Entry
+	Dst         Entry
+	IsDir       bool
+	Descendants int
 }
 
 // MkDirs are shallowest-first; Deletes holds dest-only files and the topmost
 // dest-only dirs. Skipped lists unsyncable entries (workspace-native, shortcuts, symlinks).
 type Plan struct {
-	MkDirs  []string
-	Files   []Item
-	Deletes []Item
-	Skipped []string
+	MkDirs    []string
+	Files     []Item
+	Deletes   []Item
+	Skipped   []string
+	Unchanged int
+}
+
+// DeleteFileCount is the blast radius of a delete list, which is not len(deletes):
+// a dest-only subtree collapses to a single recursive directory delete.
+func DeleteFileCount(deletes []Item) int {
+	n := 0
+	for _, it := range deletes {
+		n += deletedFileCount(it)
+	}
+	return n
+}
+
+func deletedFileCount(it Item) int {
+	if it.IsDir {
+		return it.Descendants
+	}
+	return 1
 }
 
 // FileAction takes local and remote explicitly (never src/dst) so it is
@@ -105,56 +126,104 @@ func FileAction(local, remote Entry, hashLocal func() (string, error)) (Op, erro
 	return OpUpdate, nil
 }
 
-// BuildPlan reconciles two trees into a Plan. reverse swaps which tree is the
-// source, but the local-tree entry is always handed to FileAction as its local argument.
-func BuildPlan(local, remote *Tree, reverse bool, hashLocal func(rel string) (string, error), skipped []string) (*Plan, error) {
-	plan := &Plan{Skipped: skipped}
+// Protected holds rel paths of unsyncable entries dropped from their own tree; nothing
+// on the other side may mirror-delete them. SameLocal reports whether two rel paths name
+// one local file — how a case-only difference presents — and is set for reverse runs only.
+type PlanOptions struct {
+	Reverse   bool
+	HashLocal func(rel string) (string, error)
+	Skipped   []string
+	Protected map[string]bool
+	SameLocal func(a, b string) bool
+}
+
+// Reverse swaps which tree is the source, but the local-tree entry is always handed to
+// FileAction as its local argument.
+func BuildPlan(local, remote *Tree, opts PlanOptions) (*Plan, error) {
+	plan := &Plan{Skipped: opts.Skipped}
 	src, dst := local, remote
-	if reverse {
+	if opts.Reverse {
 		src, dst = remote, local
 	}
+	srcDirFold := newFoldIdx(src.Dirs, opts.SameLocal)
+	srcFileFold := newFoldIdx(src.Files, opts.SameLocal)
+	dstDirFold := newFoldIdx(dst.Dirs, opts.SameLocal)
+	dstFileFold := newFoldIdx(dst.Files, opts.SameLocal)
 
 	for rel := range src.Dirs {
-		if _, ok := dst.Dirs[rel]; !ok {
-			plan.MkDirs = append(plan.MkDirs, rel)
+		if _, ok := dst.Dirs[rel]; ok {
+			continue
 		}
+		if _, ok := dstDirFold.lookup(rel); ok {
+			continue
+		}
+		plan.MkDirs = append(plan.MkDirs, rel)
 	}
 	sortByDepth(plan.MkDirs)
 
 	for rel, srcEntry := range src.Files {
+		dstRel := rel
 		dstEntry, ok := dst.Files[rel]
+		if !ok {
+			if alt, hit := dstFileFold.lookup(rel); hit {
+				dstRel, dstEntry, ok = alt, dst.Files[alt], true
+			}
+		}
 		if !ok {
 			plan.Files = append(plan.Files, Item{Op: OpCreate, RelPath: rel, Src: srcEntry})
 			continue
 		}
-		l, r := local.Files[rel], remote.Files[rel]
-		op, err := FileAction(l, r, func() (string, error) { return hashLocal(rel) })
+		l, r, localRel := srcEntry, dstEntry, rel
+		if opts.Reverse {
+			l, r, localRel = dstEntry, srcEntry, dstRel
+		}
+		op, err := FileAction(l, r, func() (string, error) { return opts.HashLocal(localRel) })
 		if err != nil {
 			return nil, err
 		}
 		if op == OpNone {
+			plan.Unchanged++
 			continue
 		}
-		plan.Files = append(plan.Files, Item{Op: op, RelPath: rel, Src: srcEntry, Dst: dstEntry})
+		plan.Files = append(plan.Files, Item{Op: op, RelPath: localRel, Src: srcEntry, Dst: dstEntry})
 	}
 	slices.SortFunc(plan.Files, func(a, b Item) int { return strings.Compare(a.RelPath, b.RelPath) })
 
+	protectedDirs := ancestorsOf(opts.Protected)
 	delDirs := map[string]bool{}
 	for rel := range dst.Dirs {
-		if _, ok := src.Dirs[rel]; !ok {
-			delDirs[rel] = true
+		if _, ok := src.Dirs[rel]; ok {
+			continue
+		}
+		if _, ok := srcDirFold.lookup(rel); ok {
+			continue
+		}
+		// The delete is recursive, so a directory holding an unsyncable entry must
+		// survive; its other dest-only children still fall to the file loop below.
+		if opts.Protected[rel] || protectedDirs[rel] {
+			continue
+		}
+		delDirs[rel] = true
+	}
+	descendants := map[string]int{}
+	for rel := range dst.Files {
+		if top, ok := topAncestorIn(rel, delDirs); ok {
+			descendants[top]++
 		}
 	}
 	for rel := range delDirs {
 		if !hasAncestorIn(rel, delDirs) {
-			plan.Deletes = append(plan.Deletes, Item{Op: OpDelete, RelPath: rel, Dst: dst.Dirs[rel]})
+			plan.Deletes = append(plan.Deletes, Item{Op: OpDelete, RelPath: rel, Dst: dst.Dirs[rel], IsDir: true, Descendants: descendants[rel]})
 		}
 	}
 	for rel, dstEntry := range dst.Files {
 		if _, ok := src.Files[rel]; ok {
 			continue
 		}
-		if hasAncestorIn(rel, delDirs) {
+		if _, ok := srcFileFold.lookup(rel); ok {
+			continue
+		}
+		if opts.Protected[rel] || hasAncestorIn(rel, delDirs) {
 			continue
 		}
 		plan.Deletes = append(plan.Deletes, Item{Op: OpDelete, RelPath: rel, Dst: dstEntry})
@@ -163,16 +232,61 @@ func BuildPlan(local, remote *Tree, reverse bool, hashLocal func(rel string) (st
 	return plan, nil
 }
 
-// hasAncestorIn is the delete-minimization test that collapses a dest-only subtree
-// to its topmost deleted directory (remote trash and local os.RemoveAll are both recursive).
-func hasAncestorIn(p string, set map[string]bool) bool {
-	parts := strings.Split(p, "/")
-	for i := 1; i < len(parts); i++ {
-		if set[strings.Join(parts[:i], "/")] {
-			return true
+// foldIdx resolves a rel path to an entry differing only by case. same is the authority,
+// so a case-sensitive volume under a folding GOOS still plans two distinct entries.
+type foldIdx struct {
+	byFold map[string]string
+	same   func(a, b string) bool
+}
+
+func newFoldIdx(entries map[string]Entry, same func(a, b string) bool) foldIdx {
+	if same == nil {
+		return foldIdx{}
+	}
+	byFold := make(map[string]string, len(entries))
+	for rel := range entries {
+		byFold[strings.ToLower(rel)] = rel
+	}
+	return foldIdx{byFold: byFold, same: same}
+}
+
+func (f foldIdx) lookup(rel string) (string, bool) {
+	if f.byFold == nil {
+		return "", false
+	}
+	cand, ok := f.byFold[strings.ToLower(rel)]
+	if !ok || cand == rel || !f.same(cand, rel) {
+		return "", false
+	}
+	return cand, true
+}
+
+func ancestorsOf(paths map[string]bool) map[string]bool {
+	out := map[string]bool{}
+	for p := range paths {
+		for d := parentDir(p); d != ""; d = parentDir(d) {
+			out[d] = true
 		}
 	}
-	return false
+	return out
+}
+
+// The delete-minimization test that collapses a dest-only subtree to its topmost deleted
+// directory (remote trash and local os.RemoveAll are both recursive). Walking
+// shallowest-first makes the first hit the collapse target.
+func topAncestorIn(p string, set map[string]bool) (string, bool) {
+	parts := strings.Split(p, "/")
+	for i := 1; i < len(parts); i++ {
+		if a := strings.Join(parts[:i], "/"); set[a] {
+			return a, true
+		}
+	}
+	return "", false
+}
+
+func hasAncestorIn(p string, set map[string]bool) bool {
+	_, ok := topAncestorIn(p, set)
+	return ok
 }
 
 func sortByDepth(dirs []string) {
@@ -256,6 +370,20 @@ func caseInsensitiveFS() bool {
 	return runtime.GOOS == "darwin" || runtime.GOOS == "windows"
 }
 
+// The ground truth behind a case-only name difference, since caseInsensitiveFS is a
+// GOOS guess that a case-sensitive volume would falsify.
+func sameLocalFile(root, a, b string) bool {
+	ai, err := os.Lstat(filepath.Join(root, filepath.FromSlash(a)))
+	if err != nil {
+		return false
+	}
+	bi, err := os.Lstat(filepath.Join(root, filepath.FromSlash(b)))
+	if err != nil {
+		return false
+	}
+	return os.SameFile(ai, bi)
+}
+
 func computeLocalMD5(path string) (string, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -271,9 +399,9 @@ func computeLocalMD5(path string) (string, error) {
 
 // buildLocalTree records size and mtime but no MD5 — the fast-path optimization that
 // avoids hashing every local file up front.
-func buildLocalTree(ctx context.Context, root string, ignore []string) (*Tree, []string, error) {
+func buildLocalTree(ctx context.Context, root string, ignore []string) (*Tree, []string, []string, error) {
 	tree := newTree()
-	var symlinks []string
+	var symlinks, ignored []string
 	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -295,13 +423,14 @@ func buildLocalTree(ctx context.Context, root string, ignore []string) (*Tree, [
 		}
 		rel = filepath.ToSlash(rel)
 		if shouldIgnore(rel, ignore) {
+			ignored = append(ignored, rel)
 			if d.IsDir() {
 				return filepath.SkipDir
 			}
 			return nil
 		}
 		if d.Type()&fs.ModeSymlink != 0 {
-			symlinks = append(symlinks, rel+" (symlink)")
+			symlinks = append(symlinks, rel)
 			return nil
 		}
 		info, ierr := d.Info()
@@ -316,9 +445,9 @@ func buildLocalTree(ctx context.Context, root string, ignore []string) (*Tree, [
 		return nil
 	})
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	return tree, symlinks, nil
+	return tree, symlinks, ignored, nil
 }
 
 type remoteDir struct {
@@ -327,10 +456,11 @@ type remoteDir struct {
 }
 
 // buildRemoteTree lists breadth-first, folders per level concurrently. Workspace-native
-// files and shortcuts are never keyed into the tree, so they are never mirror-deleted.
-func (c *Client) buildRemoteTree(ctx context.Context, root *driveapi.File, ignore []string, reverse bool) (*Tree, []string, error) {
+// files, shortcuts and ignored entries are dropped from the tree and returned separately;
+// the caller must pass both to PlanOptions.Protected, or the other side mirror-deletes them.
+func (c *Client) buildRemoteTree(ctx context.Context, root *driveapi.File, ignore []string, reverse bool) (*Tree, []string, []string, error) {
 	tree := newTree()
-	var skipped, preflight []string
+	var skipped, ignored, preflight []string
 	caseFold := reverse && caseInsensitiveFS()
 
 	level := []remoteDir{{f: root, rel: ""}}
@@ -349,7 +479,7 @@ func (c *Client) buildRemoteTree(ctx context.Context, root *driveapi.File, ignor
 			})
 		}
 		if err := g.Wait(); err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 
 		var next []remoteDir
@@ -361,6 +491,7 @@ func (c *Client) buildRemoteTree(ctx context.Context, root *driveapi.File, ignor
 					rel = d.rel + "/" + f.Name
 				}
 				if shouldIgnore(rel, ignore) {
+					ignored = append(ignored, rel)
 					continue
 				}
 				if IsWorkspaceFile(f) || IsShortcut(f) {
@@ -386,12 +517,12 @@ func (c *Client) buildRemoteTree(ctx context.Context, root *driveapi.File, ignor
 		level = next
 	}
 	if len(preflight) > 0 {
-		return nil, nil, &resolveError{
+		return nil, nil, nil, &resolveError{
 			msg:  "remote has ambiguous names — rename one, or 'gcli drive rm --id <id>':\n  " + strings.Join(preflight, "\n  "),
 			code: u.ExitGeneric,
 		}
 	}
-	return tree, skipped, nil
+	return tree, skipped, ignored, nil
 }
 
 func parseDriveTime(s string) time.Time {
@@ -415,9 +546,8 @@ type SyncParams struct {
 	Confirm func(deletes []Item) (bool, error)
 }
 
-// Plan is always populated (the sole output of a dry run). Deleted counts remote
-// trashes or local moves-to-.trash.gcli, never permanent deletes; LocalTrashed is the
-// reverse subset that drives the recovery tip.
+// Deleted counts deleted paths, DeletedFiles the files a recursive path delete takes with
+// it; LocalTrashed is the reverse-run subset that drives the recovery tip.
 type SyncResult struct {
 	Plan         *Plan
 	DryRun       bool
@@ -426,16 +556,12 @@ type SyncResult struct {
 	Updated      int
 	Touched      int
 	Deleted      int
+	DeletedFiles int
 	LocalTrashed int
 	Unchanged    int
 	Bytes        int64
 	Skipped      []string
 	Errors       []ItemError
-}
-
-func isNotFound(err error) bool {
-	var coded interface{ ExitCode() int }
-	return errors.As(err, &coded) && coded.ExitCode() == u.ExitNotFound
 }
 
 // Sync runs a strict phase order: pre-flight (resolve, type-match, backup, dup
@@ -450,7 +576,7 @@ func (c *Client) Sync(ctx context.Context, p SyncParams) (*SyncResult, error) {
 	localIsDir := localExists && localInfo.IsDir()
 
 	remoteFile, rerr := c.ResolveArg(ctx, p.Remote)
-	if rerr != nil && !isNotFound(rerr) {
+	if rerr != nil && !IsNotFound(rerr) {
 		return nil, rerr
 	}
 	remoteExists := rerr == nil
@@ -500,76 +626,97 @@ func (c *Client) syncFolder(ctx context.Context, p SyncParams, remoteFile *drive
 	if p.Reverse {
 		destExists = localExists
 	}
-	if p.Backup && destExists {
-		if err := c.backupDest(ctx, p, remoteFile); err != nil {
-			return nil, err
-		}
+	// A dry run must reach the plan without renaming or creating anything, and clearing
+	// destExists alone reproduces the plan a real --backup run would print.
+	backup := p.Backup && destExists
+	if backup {
 		destExists = false
 	}
 
-	var remoteRoot *driveapi.File
-	if p.Reverse {
-		remoteRoot = remoteFile
-		if !localExists || (p.Backup && !destExists) {
-			if err := os.MkdirAll(localRoot, 0o755); err != nil {
-				return nil, err
+	remoteRoot := remoteFile
+	if !p.DryRun {
+		if backup {
+			parentID, name, berr := c.backupDest(ctx, p, remoteFile)
+			if berr != nil {
+				return nil, berr
+			}
+			if !p.Reverse {
+				if remoteRoot, err = c.CreateFolder(ctx, name, parentID); err != nil {
+					return nil, err
+				}
 			}
 		}
-	} else if destExists {
-		remoteRoot = remoteFile
-	} else {
-		if remoteRoot, err = c.MkdirP(ctx, p.Remote); err != nil {
-			return nil, err
+		switch {
+		case p.Reverse:
+			if !localExists || backup {
+				if err := os.MkdirAll(localRoot, 0o755); err != nil {
+					return nil, err
+				}
+			}
+		case !destExists && !backup:
+			if remoteRoot, err = c.MkdirP(ctx, p.Remote); err != nil {
+				return nil, err
+			}
 		}
 	}
 
 	remoteTree := newTree()
-	var remoteSkipped []string
+	var remoteSkipped, remoteIgnored []string
 	remotePresent := remoteExists
 	if !p.Reverse && !destExists {
 		remotePresent = false // dest missing or backed up → mirror into a fresh empty remote
 	}
 	if remotePresent {
-		if remoteTree, remoteSkipped, err = c.buildRemoteTree(ctx, remoteRoot, ignore, p.Reverse); err != nil {
+		if remoteTree, remoteSkipped, remoteIgnored, err = c.buildRemoteTree(ctx, remoteRoot, ignore, p.Reverse); err != nil {
 			return nil, err
 		}
 	}
 
 	localTree := newTree()
-	var symlinks []string
+	var symlinks, localIgnored []string
 	if p.Reverse && !destExists {
 		// dest just created (backup/first sync) — nothing local to diff against
 	} else if localExists || !p.Reverse {
-		if localTree, symlinks, err = buildLocalTree(ctx, localRoot, ignore); err != nil {
+		if localTree, symlinks, localIgnored, err = buildLocalTree(ctx, localRoot, ignore); err != nil {
 			return nil, err
 		}
 	}
 
-	skipped := append(remoteSkipped, symlinks...)
-	hashLocal := func(rel string) (string, error) {
-		return computeLocalMD5(filepath.Join(localRoot, filepath.FromSlash(rel)))
+	protected := make(map[string]bool, len(remoteSkipped)+len(symlinks))
+	skipped := make([]string, 0, len(remoteSkipped)+len(symlinks))
+	for _, rel := range remoteSkipped {
+		protected[rel] = true
+		skipped = append(skipped, rel)
 	}
-	plan, err := BuildPlan(localTree, remoteTree, p.Reverse, hashLocal, skipped)
+	for _, rel := range symlinks {
+		protected[rel] = true
+		skipped = append(skipped, rel+" (symlink)")
+	}
+	// Ignored entries are protected but not reported as skipped: the user excluded them
+	// deliberately, and a dest-only directory holding only ignored files must not collapse
+	// into a recursive delete that takes them with it.
+	for _, rel := range slices.Concat(localIgnored, remoteIgnored) {
+		protected[rel] = true
+	}
+	var sameLocal func(a, b string) bool
+	if p.Reverse && caseInsensitiveFS() {
+		sameLocal = func(a, b string) bool { return sameLocalFile(localRoot, a, b) }
+	}
+	plan, err := BuildPlan(localTree, remoteTree, PlanOptions{
+		Reverse: p.Reverse,
+		HashLocal: func(rel string) (string, error) {
+			return computeLocalMD5(filepath.Join(localRoot, filepath.FromSlash(rel)))
+		},
+		Skipped:   skipped,
+		Protected: protected,
+		SameLocal: sameLocal,
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	commonFiles := 0
-	for rel := range localTree.Files {
-		if _, ok := remoteTree.Files[rel]; ok {
-			commonFiles++
-		}
-	}
-	var moved int
-	for _, it := range plan.Files {
-		if it.Op == OpUpdate || it.Op == OpTouch {
-			moved++
-		}
-	}
-	unchanged := commonFiles - moved
-
 	if p.DryRun {
-		return &SyncResult{Plan: plan, DryRun: true, Unchanged: unchanged, Skipped: skipped}, nil
+		return &SyncResult{Plan: plan, DryRun: true, Unchanged: plan.Unchanged, Skipped: skipped}, nil
 	}
 	if len(plan.Deletes) > 0 && !p.Yes && p.Confirm != nil {
 		ok, cerr := p.Confirm(plan.Deletes)
@@ -596,7 +743,7 @@ func (c *Client) syncFolder(ctx context.Context, p SyncParams, remoteFile *drive
 	}
 	res := c.executeSync(ctx, plan, m)
 	res.Plan = plan
-	res.Unchanged = unchanged
+	res.Unchanged = plan.Unchanged
 	res.Skipped = skipped
 	if !p.Reverse {
 		c.InvalidatePath(cleanPath(p.Remote))
@@ -604,33 +751,33 @@ func (c *Client) syncFolder(ctx context.Context, p SyncParams, remoteFile *drive
 	return res, nil
 }
 
-// backupDest renames an existing destination to <name>.bak. The rename moves the
-// whole tree out of the destination path before the mirror runs, so unlike rsync's
-// --backup there is no protect-rule interplay with the same run's deletes — the .bak
-// can never be swept.
-func (c *Client) backupDest(ctx context.Context, p SyncParams, remoteFile *driveapi.File) error {
+// Renaming keeps the file ID, so re-resolving the user's argument under --id would hand
+// back the .bak itself; the vacated parent and name are returned to mirror into instead.
+func (c *Client) backupDest(ctx context.Context, p SyncParams, remoteFile *driveapi.File) (parentID, name string, err error) {
 	if p.Reverse {
 		bak := filepath.Clean(p.Local) + ".bak"
-		if _, err := os.Lstat(bak); err == nil {
-			return usageErr("backup destination '%s' already exists — remove it first", filepath.Base(bak))
+		if _, lerr := os.Lstat(bak); lerr == nil {
+			return "", "", usageErr("backup destination '%s' already exists — remove it first", filepath.Base(bak))
 		}
-		return os.Rename(filepath.Clean(p.Local), bak)
+		return "", "", os.Rename(filepath.Clean(p.Local), bak)
 	}
 	bakName := remoteFile.Name + ".bak"
-	parentID := "root"
+	parentID = "root"
 	if len(remoteFile.Parents) > 0 {
 		parentID = remoteFile.Parents[0]
 	}
 	existing, err := c.listQuery(ctx, corpusForFile(remoteFile),
 		fmt.Sprintf("name = '%s' and '%s' in parents and trashed = false", escapeQuery(bakName), parentID), 1)
 	if err != nil {
-		return err
+		return "", "", err
 	}
 	if len(existing) > 0 {
-		return usageErr("backup destination '%s' already exists — remove it first", bakName)
+		return "", "", usageErr("backup destination '%s' already exists — remove it first", bakName)
 	}
-	_, err = c.MoveFile(ctx, remoteFile.Id, bakName, "", "")
-	return err
+	if _, err = c.MoveFile(ctx, remoteFile.Id, bakName, "", ""); err != nil {
+		return "", "", err
+	}
+	return parentID, remoteFile.Name, nil
 }
 
 func (c *Client) syncFile(ctx context.Context, p SyncParams, remoteFile *driveapi.File, remoteExists, localExists bool, localInfo os.FileInfo) (*SyncResult, error) {
@@ -641,10 +788,8 @@ func (c *Client) syncFile(ctx context.Context, p SyncParams, remoteFile *driveap
 	if p.Reverse {
 		destExists = localExists
 	}
-	if p.Backup && destExists {
-		if err := c.backupDest(ctx, p, remoteFile); err != nil {
-			return nil, err
-		}
+	backup := p.Backup && destExists
+	if backup {
 		destExists = false
 	}
 
@@ -675,6 +820,17 @@ func (c *Client) syncFile(ctx context.Context, p SyncParams, remoteFile *driveap
 		return res, nil
 	}
 
+	// The backup is deferred past the dry-run return; clearing destExists above already
+	// gave the plan the OpCreate a real --backup run produces.
+	var dest uploadDest
+	if backup {
+		parentID, name, berr := c.backupDest(ctx, p, remoteFile)
+		if berr != nil {
+			return nil, berr
+		}
+		dest = uploadDest{parentID: parentID, name: name}
+	}
+
 	switch op {
 	case OpNone:
 		return res, nil
@@ -695,7 +851,7 @@ func (c *Client) syncFile(ctx context.Context, p SyncParams, remoteFile *driveap
 		}
 		return res, nil
 	case OpUpdate, OpCreate:
-		if err := c.syncFileTransfer(ctx, p, remoteFile, destExists, op, rel, res); err != nil {
+		if err := c.syncFileTransfer(ctx, p, remoteFile, destExists, op, dest, res); err != nil {
 			res.Errors = append(res.Errors, ItemError{rel, err})
 		}
 		return res, nil
@@ -703,7 +859,14 @@ func (c *Client) syncFile(ctx context.Context, p SyncParams, remoteFile *driveap
 	return res, nil
 }
 
-func (c *Client) syncFileTransfer(ctx context.Context, p SyncParams, remoteFile *driveapi.File, destExists bool, op Op, rel string, res *SyncResult) error {
+// uploadDest is the push destination captured before a --backup rename; the zero value
+// means it is still to be resolved from the user's argument.
+type uploadDest struct {
+	parentID string
+	name     string
+}
+
+func (c *Client) syncFileTransfer(ctx context.Context, p SyncParams, remoteFile *driveapi.File, destExists bool, op Op, dest uploadDest, res *SyncResult) error {
 	if p.Reverse {
 		prog := newByteProgress(1, remoteFile.Size)
 		if err := c.DownloadFile(ctx, remoteFile, p.Local, prog); err != nil {
@@ -724,21 +887,23 @@ func (c *Client) syncFileTransfer(ctx context.Context, p SyncParams, remoteFile 
 		countTransfer(res, op, prog.doneBytes.Load())
 		return nil
 	}
-	parentID, name, err := c.ResolveArgParent(ctx, p.Remote)
-	if err != nil {
-		return err
+	if dest.parentID == "" {
+		var err error
+		if dest.parentID, dest.name, err = c.ResolveArgParent(ctx, p.Remote); err != nil {
+			return err
+		}
 	}
 	info, err := os.Stat(p.Local)
 	if err != nil {
 		return err
 	}
 	prog := newByteProgress(1, info.Size())
-	created, err := c.UploadFile(ctx, p.Local, parentID, prog)
+	created, err := c.UploadFile(ctx, p.Local, dest.parentID, prog)
 	if err != nil {
 		return err
 	}
-	if name != "" && created.Name != name {
-		if _, err := c.MoveFile(ctx, created.Id, name, "", ""); err != nil {
+	if dest.name != "" && created.Name != dest.name {
+		if _, err := c.MoveFile(ctx, created.Id, dest.name, "", ""); err != nil {
 			return err
 		}
 	}
@@ -839,7 +1004,7 @@ func (c *Client) executeSync(ctx context.Context, plan *Plan, m *syncExec) *Sync
 		switch {
 		case m.reverse && (it.Op == OpCreate || it.Op == OpUpdate):
 			file := entryToFile(it.Src)
-			tasks = append(tasks, task{relPath: it.RelPath, bytes: it.Src.Size, run: func(ctx context.Context) error {
+			tasks = append(tasks, task{relPath: it.RelPath, run: func(ctx context.Context) error {
 				if err := c.DownloadFile(ctx, file, local, prog); err != nil {
 					return err
 				}
@@ -857,7 +1022,7 @@ func (c *Client) executeSync(ctx context.Context, plan *Plan, m *syncExec) *Sync
 			}})
 		case it.Op == OpCreate:
 			pid := pd.parentID
-			tasks = append(tasks, task{relPath: it.RelPath, bytes: it.Src.Size, run: func(ctx context.Context) error {
+			tasks = append(tasks, task{relPath: it.RelPath, run: func(ctx context.Context) error {
 				if _, err := c.UploadFile(ctx, local, pid, prog); err != nil {
 					return err
 				}
@@ -866,7 +1031,7 @@ func (c *Client) executeSync(ctx context.Context, plan *Plan, m *syncExec) *Sync
 			}})
 		case it.Op == OpUpdate:
 			id := it.Dst.ID
-			tasks = append(tasks, task{relPath: it.RelPath, bytes: it.Src.Size, run: func(ctx context.Context) error {
+			tasks = append(tasks, task{relPath: it.RelPath, run: func(ctx context.Context) error {
 				if _, err := c.UpdateFile(ctx, id, local, false, prog); err != nil {
 					return err
 				}
@@ -907,6 +1072,7 @@ func (c *Client) executeSync(ctx context.Context, plan *Plan, m *syncExec) *Sync
 			}
 			res.LocalTrashed++
 			res.Deleted++
+			res.DeletedFiles += deletedFileCount(it)
 			continue
 		}
 		if err := c.TrashFile(ctx, it.Dst.ID); err != nil {
@@ -914,6 +1080,7 @@ func (c *Client) executeSync(ctx context.Context, plan *Plan, m *syncExec) *Sync
 			continue
 		}
 		res.Deleted++
+		res.DeletedFiles += deletedFileCount(it)
 	}
 	res.Errors = errs
 	return res

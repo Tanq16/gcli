@@ -2,6 +2,7 @@ package drive
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -37,6 +38,53 @@ func notFoundErr(format string, a ...any) error {
 
 func usageErr(format string, a ...any) error {
 	return &resolveError{fmt.Sprintf(format, a...), u.ExitUsage}
+}
+
+type exitCoder interface {
+	error
+	ExitCode() int
+}
+
+func exitCodeOf(err error) int {
+	if coded, ok := errors.AsType[exitCoder](err); ok {
+		return coded.ExitCode()
+	}
+	if errors.Is(err, context.Canceled) {
+		return u.ExitCancelled
+	}
+	return u.ExitGeneric
+}
+
+// IsNotFound is the only safe test for absence; every other failure is inconclusive.
+func IsNotFound(err error) bool {
+	return err != nil && exitCodeOf(err) == u.ExitNotFound
+}
+
+// BatchExitCode picks the exit code for a multi-argument command. Partial is reserved
+// for mixed outcomes; an all-failed run reports the cause its errors agree on.
+func BatchExitCode(succeeded int, errs []error) int {
+	if len(errs) == 0 {
+		return 0
+	}
+	if succeeded > 0 {
+		return u.ExitPartial
+	}
+	code := exitCodeOf(errs[0])
+	for _, err := range errs[1:] {
+		if exitCodeOf(err) != code {
+			return u.ExitPartial
+		}
+	}
+	return code
+}
+
+// ItemsExitCode is BatchExitCode over ItemError, which unwraps to the classified cause.
+func ItemsExitCode(succeeded int, errs []ItemError) int {
+	plain := make([]error, len(errs))
+	for i, e := range errs {
+		plain[i] = e
+	}
+	return BatchExitCode(succeeded, plain)
 }
 
 // Order matters: backslashes first, then single quotes, so an embedded quote is
@@ -144,22 +192,22 @@ func (c *Client) listQuery(ctx context.Context, cor corpus, q string, pageSize i
 	return res.Files, nil
 }
 
-// chooseDuplicate resolves a name that matches multiple siblings: human mode
-// prompts; --for-ai returns a candidate-list error (exit 4) directing to --id.
+// Human mode prompts; --for-ai returns a candidate-list error directing to --id.
+// Ambiguity is a usage failure, never not-found, which callers read as "safe to create".
 func (c *Client) chooseDuplicate(name string, files []*driveapi.File) (*driveapi.File, error) {
 	if len(files) == 1 {
 		return files[0], nil
 	}
 	labels := formatDupCandidates(files)
 	if u.GlobalForAIFlag {
-		return nil, notFoundErr("multiple items named '%s' — re-run with --id, one of: %s", name, strings.Join(labels, "; "))
+		return nil, usageErr("multiple items named '%s' — re-run with --id, one of: %s", name, strings.Join(labels, "; "))
 	}
 	idx, err := u.PromptSelect(fmt.Sprintf("multiple items named '%s' — choose one", name), labels)
 	if err != nil {
 		return nil, err
 	}
 	if idx < 0 {
-		return nil, notFoundErr("ambiguous name '%s' — re-run with --id", name)
+		return nil, u.ErrPromptCancelled
 	}
 	return files[idx], nil
 }
@@ -392,26 +440,29 @@ func (c *Client) ResolveIDToPath(ctx context.Context, id string) (string, error)
 	return strings.Join(names, "/"), nil
 }
 
-// ResolveParentPaths caches by parent ID so repeated parents cost one lookup, and
-// returns false when any parent failed to resolve so a caller can warn once
-// instead of per row.
+// ResolveParentPaths caches by parent ID, failures included, and reports false when any
+// parent failed so a caller can warn once instead of per row.
 func (c *Client) ResolveParentPaths(ctx context.Context, files []*driveapi.File) (map[string]string, bool) {
+	return resolveParentPaths(files, func(id string) (string, error) { return c.ResolveIDToPath(ctx, id) })
+}
+
+func resolveParentPaths(files []*driveapi.File, resolve func(string) (string, error)) (map[string]string, bool) {
 	paths := make(map[string]string)
-	allResolved := true
+	failed := make(map[string]bool)
 	for _, f := range files {
 		if len(f.Parents) == 0 {
 			continue
 		}
 		pid := f.Parents[0]
-		if _, seen := paths[pid]; seen {
+		if _, seen := paths[pid]; seen || failed[pid] {
 			continue
 		}
-		p, err := c.ResolveIDToPath(ctx, pid)
+		p, err := resolve(pid)
 		if err != nil {
-			allResolved = false
+			failed[pid] = true
 			continue
 		}
 		paths[pid] = "/" + p
 	}
-	return paths, allResolved
+	return paths, len(failed) == 0
 }
