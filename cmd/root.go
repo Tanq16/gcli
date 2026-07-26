@@ -1,8 +1,11 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -18,25 +21,30 @@ var debugFlag bool
 var forAIFlag bool
 
 var rootCmd = &cobra.Command{
-	Use:     "gcli",
-	Short:   "CLI tool for Google Drive and Gmail",
-	Version: AppVersion,
+	Use:           "gcli",
+	Short:         "CLI tool for Google Drive and Gmail",
+	Version:       AppVersion,
+	SilenceUsage:  true,
+	SilenceErrors: true,
 	CompletionOptions: cobra.CompletionOptions{
 		HiddenDefaultCmd: true,
 	},
 }
 
 func Execute() {
-	if err := rootCmd.Execute(); err != nil {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	// A flag-parse failure precedes setupLogs, so the printer's output tiers are not yet set.
+	if err := rootCmd.ExecuteContext(ctx); err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		os.Exit(u.ExitUsage)
 	}
 }
 
 func setupLogs() {
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 	output := zerolog.ConsoleWriter{
-		Out:        os.Stdout,
+		Out:        os.Stderr,
 		TimeFormat: time.DateTime,
 		NoColor:    false,
 	}

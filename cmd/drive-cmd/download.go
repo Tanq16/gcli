@@ -1,51 +1,41 @@
 package driveCmd
 
 import (
-	"path/filepath"
-
 	"github.com/spf13/cobra"
 	"github.com/tanq16/gcli/internal/drive"
-	u "github.com/tanq16/gcli/utils"
 )
 
 var downloadFlags struct {
-	id string
+	format   string
+	revision string
 }
 
 var downloadCmd = &cobra.Command{
-	Use:   "download <remote> [local]",
-	Short: "Download file or folder from Google Drive",
-	Args:  cobra.RangeArgs(1, 2),
+	Use:     "download <remote> [local]",
+	Aliases: []string{"dl"},
+	Short:   "Download a file or folder from Google Drive",
+	Args:    cobra.RangeArgs(1, 2),
 	Run: func(cmd *cobra.Command, args []string) {
-		f, err := drive.ResolveOrID(args[0], downloadFlags.id)
-		if err != nil {
-			u.PrintFatal("failed to resolve remote path", err)
-		}
-
-		localPath := f.Name
+		ctx := cmd.Context()
+		c := drive.C()
+		local := "."
 		if len(args) > 1 {
-			localPath = args[1]
+			local = args[1]
 		}
 
-		if drive.IsFolder(f) {
-			if err := drive.DownloadFolder(cmd.Context(), f.Id, localPath); err != nil {
-				u.PrintFatal("folder download failed", err)
-			}
-			u.PrintSuccess("folder downloaded to " + localPath)
-		} else {
-			u.PrintRunning("downloading...")
-			localPath = filepath.Clean(localPath)
-			if err := drive.DownloadFile(f, localPath); err != nil {
-				u.ClearLines(1)
-				u.PrintFatal("download failed", err)
-			}
-			u.ClearLines(1)
-			u.PrintSuccess("downloaded " + f.Name)
+		if downloadFlags.revision != "" {
+			res, err := c.DownloadRev(ctx, args[0], local, downloadFlags.revision)
+			finishTransfer(ctx, "download", "downloaded", res, err)
+			return
 		}
+
+		res, err := c.Download(ctx, args[0], local, downloadFlags.format)
+		finishTransfer(ctx, "download", "downloaded", res, err)
 	},
 }
 
 func init() {
 	DriveCmd.AddCommand(downloadCmd)
-	downloadCmd.Flags().StringVarP(&downloadFlags.id, "id", "i", "", "Use file ID instead of path")
+	downloadCmd.Flags().StringVar(&downloadFlags.format, "format", "", "Export format for Workspace files (pdf, docx, md, csv, xlsx, ...)")
+	downloadCmd.Flags().StringVar(&downloadFlags.revision, "revision", "", "Download a specific historical revision by ID (single file)")
 }

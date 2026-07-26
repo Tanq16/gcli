@@ -1,9 +1,7 @@
 package mailCmd
 
 import (
-	"context"
 	"fmt"
-	"strconv"
 
 	"github.com/spf13/cobra"
 	"github.com/tanq16/gcli/internal/mail"
@@ -13,23 +11,15 @@ import (
 var listFlags struct {
 	label  string
 	unread bool
+	limit  int64
 }
 
 var listCmd = &cobra.Command{
-	Use:   "list [count]",
-	Short: "List recent threads (default: 20)",
-	Args:  cobra.MaximumNArgs(1),
+	Use:   "list",
+	Short: "List recent threads",
+	Args:  cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
-		count := int64(20)
-		if len(args) > 0 {
-			n, err := strconv.ParseInt(args[0], 10, 64)
-			if err != nil {
-				u.PrintFatal("invalid count", err)
-			}
-			count = n
-		}
-
-		threads, err := mail.ListThreads(context.Background(), listFlags.label, listFlags.unread, count)
+		threads, err := mail.ListThreads(cmd.Context(), listFlags.label, listFlags.unread, listFlags.limit)
 		if err != nil {
 			u.PrintFatal("failed to list threads", err)
 		}
@@ -39,37 +29,28 @@ var listCmd = &cobra.Command{
 			return
 		}
 
-		headers := []string{"ID", "FROM", "SUBJECT", "DATE"}
-		var rows [][]string
-		for _, t := range threads {
-			from := truncateString(t.From, 30)
-			subject := t.Subject
-			if t.MessageCount > 1 {
-				subject = fmt.Sprintf("[%d] %s", t.MessageCount, subject)
-			}
-			if t.Unread {
-				subject = "* " + subject
-			}
-			subject = truncateString(subject, 80)
-			rows = append(rows, []string{t.ID, from, subject, t.Date})
-		}
-
-		u.PrintTable(headers, rows)
+		u.PrintTableKeepFull([]string{"ID", "FROM", "SUBJECT", "DATE"}, threadRows(threads), "ID")
 	},
 }
 
 func init() {
 	MailCmd.AddCommand(listCmd)
-	listCmd.Flags().StringVar(&listFlags.label, "label", "INBOX", "Label to list threads from")
+	listCmd.Flags().StringVar(&listFlags.label, "label", "INBOX", "Label name or ID to list threads from")
 	listCmd.Flags().BoolVar(&listFlags.unread, "unread", false, "Only show unread threads")
+	listCmd.Flags().Int64VarP(&listFlags.limit, "limit", "n", 20, "Maximum number of threads")
 }
 
-func truncateString(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
+func threadRows(threads []mail.ThreadSummary) [][]string {
+	rows := make([][]string, 0, len(threads))
+	for _, t := range threads {
+		subject := t.Subject
+		if t.MessageCount > 1 {
+			subject = fmt.Sprintf("[%d] %s", t.MessageCount, subject)
+		}
+		if t.Unread {
+			subject = "* " + subject
+		}
+		rows = append(rows, []string{t.ID, t.From, subject, t.Date})
 	}
-	if maxLen <= 3 {
-		return s[:maxLen]
-	}
-	return s[:maxLen-3] + "..."
+	return rows
 }

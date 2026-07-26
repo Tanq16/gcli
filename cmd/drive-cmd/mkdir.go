@@ -15,10 +15,11 @@ var mkdirCmd = &cobra.Command{
 	Short: "Create a folder in Google Drive",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		path := args[0]
+		ctx := cmd.Context()
+		c := drive.C()
 
 		if mkdirFlags.parents {
-			folder, err := drive.MkdirP(path)
+			folder, err := c.MkdirP(ctx, args[0])
 			if err != nil {
 				u.PrintFatal("failed to create directories", err)
 			}
@@ -26,16 +27,15 @@ var mkdirCmd = &cobra.Command{
 			return
 		}
 
-		parentID, name, err := drive.ResolveParent(path)
+		parentID, name, err := c.ResolveArgParent(ctx, args[0])
 		if err != nil {
 			u.PrintFatal("failed to resolve parent path", err)
 		}
-
-		folder, err := drive.CreateFolder(name, parentID)
+		folder, err := c.CreateFolder(ctx, name, parentID)
 		if err != nil {
 			u.PrintFatal("failed to create folder", err)
 		}
-
+		c.InvalidatePath(args[0])
 		u.PrintSuccess("created " + folder.Name + " (" + folder.Id + ")")
 	},
 }

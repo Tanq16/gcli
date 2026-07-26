@@ -1,37 +1,50 @@
 package driveCmd
 
 import (
+	"errors"
+
 	"github.com/spf13/cobra"
-	linkCmd "github.com/tanq16/gcli/cmd/drive-cmd/link-cmd"
-	syncCmd "github.com/tanq16/gcli/cmd/drive-cmd/sync-cmd"
-	trashCmd "github.com/tanq16/gcli/cmd/drive-cmd/trash-cmd"
 	"github.com/tanq16/gcli/internal/auth"
 	"github.com/tanq16/gcli/internal/drive"
+	u "github.com/tanq16/gcli/utils"
 )
 
-var sharedFlag bool
-
-func init() {
-	DriveCmd.AddCommand(syncCmd.SyncCmd)
-	DriveCmd.AddCommand(trashCmd.TrashCmd)
-	DriveCmd.AddCommand(trashCmd.RestoreCmd)
-	DriveCmd.AddCommand(linkCmd.LinkCmd)
-	DriveCmd.PersistentFlags().BoolVarP(&sharedFlag, "shared", "S", false, "Resolve paths from 'Shared with me' instead of My Drive")
+var driveFlags struct {
+	workers int
+	id      bool
+	shared  bool
 }
 
-// DriveCmd is the parent command for all Google Drive operations
 var DriveCmd = &cobra.Command{
 	Use:   "drive",
 	Short: "Google Drive file operations",
-	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		client, err := auth.GetHTTPClient()
+	// Runnable so cobra reaches ValidateArgs; a bare parent returns ErrHelp first, so a mistyped subcommand would print help and exit 0.
+	Args: cobra.NoArgs,
+	Run:  func(cmd *cobra.Command, args []string) { _ = cmd.Help() },
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		// A parent invocation only prints help, which must work unauthenticated.
+		if cmd.HasSubCommands() {
+			return
+		}
+		client, err := auth.GetHTTPClient(cmd.Context())
+		if errors.Is(err, auth.ErrNoCredentials) {
+			u.PrintFatalCode("", auth.WithSetupHint(err), u.ExitAuth)
+		}
 		if err != nil {
-			return err
+			u.PrintFatalCode("not authenticated — run 'gcli login'", err, u.ExitAuth)
 		}
-		if err := drive.Init(client); err != nil {
-			return err
+		if err := drive.Init(client, drive.Options{
+			Workers: max(1, driveFlags.workers),
+			Shared:  driveFlags.shared,
+			ByID:    driveFlags.id,
+		}); err != nil {
+			u.PrintFatalCode("failed to initialize Drive client", err, u.ExitAuth)
 		}
-		drive.SharedMode = sharedFlag
-		return nil
 	},
+}
+
+func init() {
+	DriveCmd.PersistentFlags().IntVarP(&driveFlags.workers, "workers", "w", 4, "Worker-pool size for upload/download/sync")
+	DriveCmd.PersistentFlags().BoolVar(&driveFlags.id, "id", false, "Treat remote arguments as Drive IDs (resolved to paths)")
+	DriveCmd.PersistentFlags().BoolVarP(&driveFlags.shared, "shared", "s", false, "Operate in the shared namespace (shared drives + shared-with-me)")
 }

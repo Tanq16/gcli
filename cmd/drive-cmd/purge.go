@@ -1,6 +1,7 @@
 package driveCmd
 
 import (
+	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -9,25 +10,22 @@ import (
 )
 
 var purgeFlags struct {
-	id  string
 	yes bool
 }
 
 var purgeCmd = &cobra.Command{
-	Use:   "purge <path>",
-	Short: "Permanently delete a file or folder, bypassing trash",
-	Args:  cobra.ExactArgs(1),
+	Use:   "purge <path>...",
+	Short: "Permanently delete files or folders, bypassing trash",
+	Args:  cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		f, err := drive.ResolveOrID(args[0], purgeFlags.id)
-		if err != nil {
-			u.PrintFatal("failed to resolve path", err)
-		}
+		ctx := cmd.Context()
+		c := drive.C()
 
 		if !purgeFlags.yes {
 			if u.GlobalForAIFlag {
-				u.PrintFatal("refusing to purge without --yes in --for-ai mode", nil)
+				u.PrintFatalCode("refusing to purge without --yes in --for-ai mode", nil, u.ExitUsage)
 			}
-			answer, err := u.PromptInput("Permanently delete "+f.Name+"? Type 'yes' to confirm:", "yes/no")
+			answer, err := u.PromptInput("Permanently delete "+strings.Join(args, ", ")+"? Type 'yes' to confirm:", "yes/no")
 			if err != nil {
 				u.PrintFatal("failed to read confirmation", err)
 			}
@@ -37,16 +35,35 @@ var purgeCmd = &cobra.Command{
 			}
 		}
 
-		if err := drive.PurgeFile(f.Id); err != nil {
-			u.PrintFatal("failed to purge "+f.Name, err)
+		purged := 0
+		var errs []error
+		for _, arg := range args {
+			// Without this an abort reports itself once per remaining argument.
+			if ctx.Err() != nil {
+				break
+			}
+			f, err := c.ResolveArg(ctx, arg)
+			if err != nil {
+				u.PrintError("failed to resolve "+arg, err)
+				errs = append(errs, err)
+				continue
+			}
+			if err := c.PurgeFile(ctx, f.Id); err != nil {
+				u.PrintError("failed to purge "+f.Name, err)
+				errs = append(errs, err)
+				continue
+			}
+			c.InvalidatePath(arg)
+			purged++
+			u.PrintSuccess("permanently deleted " + f.Name)
 		}
-
-		u.PrintSuccess("permanently deleted " + f.Name)
+		if code := drive.BatchExitCode(purged, errs); code != 0 {
+			os.Exit(code)
+		}
 	},
 }
 
 func init() {
 	DriveCmd.AddCommand(purgeCmd)
-	purgeCmd.Flags().StringVarP(&purgeFlags.id, "id", "i", "", "Use file ID instead of path")
 	purgeCmd.Flags().BoolVarP(&purgeFlags.yes, "yes", "y", false, "Skip confirmation prompt")
 }

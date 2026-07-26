@@ -1,24 +1,34 @@
 package mailCmd
 
 import (
+	"errors"
+
 	"github.com/spf13/cobra"
-	markCmd "github.com/tanq16/gcli/cmd/mail-cmd/mark-cmd"
 	"github.com/tanq16/gcli/internal/auth"
 	"github.com/tanq16/gcli/internal/mail"
+	u "github.com/tanq16/gcli/utils"
 )
-
-func init() {
-	MailCmd.AddCommand(markCmd.MarkCmd)
-}
 
 var MailCmd = &cobra.Command{
 	Use:   "mail",
 	Short: "Gmail operations",
-	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		client, err := auth.GetHTTPClient()
-		if err != nil {
-			return err
+	// Runnable so cobra reaches ValidateArgs; a bare parent returns ErrHelp first, so a mistyped subcommand would print help and exit 0.
+	Args: cobra.NoArgs,
+	Run:  func(cmd *cobra.Command, args []string) { _ = cmd.Help() },
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		// A parent invocation only prints help, which must work unauthenticated.
+		if cmd.HasSubCommands() {
+			return
 		}
-		return mail.Init(client)
+		client, err := auth.GetHTTPClient(cmd.Context())
+		if errors.Is(err, auth.ErrNoCredentials) {
+			u.PrintFatalCode("", auth.WithSetupHint(err), u.ExitAuth)
+		}
+		if err != nil {
+			u.PrintFatalCode("not authenticated — run 'gcli login'", err, u.ExitAuth)
+		}
+		if err := mail.Init(client); err != nil {
+			u.PrintFatalCode("failed to initialize Gmail client", err, u.ExitAuth)
+		}
 	},
 }

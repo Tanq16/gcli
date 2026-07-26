@@ -2,137 +2,219 @@ package drive
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/tanq16/gcli/internal/gapi"
 	driveapi "google.golang.org/api/drive/v3"
 )
 
-// SearchOptions holds the parameters for a server-side search
 type SearchOptions struct {
-	Query      string
-	Type       string   // "file" or "folder"
-	Extensions []string // e.g., ["pdf", "docx"]
-	CreatedIn  string   // time range like "2024-01-01..2024-12-31"
-	UpdatedIn  string   // time range like "2024-01-01..2024-12-31"
-	SizeMin    int64
-	SizeMax    int64
-	Limit      int
-	Sort       string // "name", "modifiedTime", "size"
+	Query    string
+	In       string
+	Content  bool
+	Type     string
+	Ext      []string
+	Created  string
+	Modified string
+	SizeMin  int64
+	SizeMax  int64
+	Limit    int
+	Sort     string
 }
 
-// Search executes a server-side search with the given options
-func Search(opts SearchOptions) ([]*driveapi.File, error) {
-	var conditions []string
+// Returned to stop Pages early at the limit; filtered with errors.Is, not a real error.
+var errStopPaging = errors.New("stop paging")
 
-	conditions = append(conditions, "trashed = false")
+// Size is the one predicate Drive cannot express in a query, so paging runs post-filter; this caps a rare size paging an entire Drive.
+const sizeScanBudget = 10000
 
-	if opts.Query != "" {
-		escaped := strings.ReplaceAll(opts.Query, "'", "\\'")
-		conditions = append(conditions, fmt.Sprintf("fullText contains '%s'", escaped))
+func (c *Client) Search(ctx context.Context, opts SearchOptions) ([]*driveapi.File, error) {
+	cor := corpus{}
+	folderID := ""
+	if opts.In != "" {
+		folder, err := c.ResolveArg(ctx, opts.In)
+		if err != nil {
+			return nil, err
+		}
+		if !IsFolder(folder) {
+			return nil, usageErr("--in target '%s' is not a folder", folder.Name)
+		}
+		folderID, cor = folder.Id, corpusForFile(folder)
 	}
 
-	if opts.Type == "folder" {
-		conditions = append(conditions, "mimeType = 'application/vnd.google-apps.folder'")
-	} else if opts.Type == "file" {
-		conditions = append(conditions, "mimeType != 'application/vnd.google-apps.folder'")
+	q, err := searchQuery(opts, folderID, time.Now())
+	if err != nil {
+		return nil, err
+	}
+	orderBy, err := sortOrder(opts.Sort)
+	if err != nil {
+		return nil, err
+	}
+	limit := opts.Limit
+	if limit <= 0 {
+		limit = 100
+	}
+	pageSize, budget := min(limit, 1000), limit
+	if opts.SizeMin > 0 || opts.SizeMax > 0 {
+		pageSize, budget = 1000, max(limit, sizeScanBudget)
 	}
 
-	for _, ext := range opts.Extensions {
-		ext = strings.TrimPrefix(ext, ".")
-		conditions = append(conditions, fmt.Sprintf("name contains '.%s'", ext))
-	}
-
-	if opts.CreatedIn != "" {
-		start, end := parseTimeRange(opts.CreatedIn)
-		if start != "" {
-			conditions = append(conditions, fmt.Sprintf("createdTime >= '%s'", start))
-		}
-		if end != "" {
-			conditions = append(conditions, fmt.Sprintf("createdTime <= '%s'", end))
-		}
-	}
-
-	if opts.UpdatedIn != "" {
-		start, end := parseTimeRange(opts.UpdatedIn)
-		if start != "" {
-			conditions = append(conditions, fmt.Sprintf("modifiedTime >= '%s'", start))
-		}
-		if end != "" {
-			conditions = append(conditions, fmt.Sprintf("modifiedTime <= '%s'", end))
-		}
-	}
-
-	q := strings.Join(conditions, " and ")
-
-	call := Service.Files.List().
-		Q(q).
-		Fields(ListFields()).
-		PageSize(1000).
-		SupportsAllDrives(true).
-		IncludeItemsFromAllDrives(true).
-		Corpora("allDrives")
-
-	if opts.Sort != "" {
-		orderBy := opts.Sort
-		if orderBy == "size" {
-			orderBy = "quotaBytesUsed"
-		}
+	call := c.filesList(cor).Q(q).Fields(ListFields()).PageSize(int64(pageSize))
+	if orderBy != "" {
 		call = call.OrderBy(orderBy)
 	}
-
-	var allFiles []*driveapi.File
-	err := call.Pages(context.Background(), func(page *driveapi.FileList) error {
-		allFiles = append(allFiles, page.Files...)
-		if opts.Limit > 0 && len(allFiles) >= opts.Limit {
-			return fmt.Errorf("limit reached")
+	var out []*driveapi.File
+	scanned := 0
+	err = call.Pages(ctx, func(p *driveapi.FileList) error {
+		scanned += len(p.Files)
+		for _, f := range p.Files {
+			if matchesSize(f, opts.SizeMin, opts.SizeMax) {
+				out = append(out, f)
+			}
+		}
+		if len(out) >= limit || scanned >= budget {
+			return errStopPaging
 		}
 		return nil
 	})
-	if err != nil && err.Error() != "limit reached" {
+	if err != nil && !errors.Is(err, errStopPaging) {
 		return nil, gapi.HandleError(err)
 	}
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
 
-	if opts.SizeMin > 0 || opts.SizeMax > 0 {
-		var filtered []*driveapi.File
-		for _, f := range allFiles {
-			if opts.SizeMin > 0 && f.Size < opts.SizeMin {
-				continue
-			}
-			if opts.SizeMax > 0 && f.Size > opts.SizeMax {
-				continue
-			}
-			filtered = append(filtered, f)
+func matchesSize(f *driveapi.File, minSize, maxSize int64) bool {
+	if minSize > 0 && f.Size < minSize {
+		return false
+	}
+	if maxSize > 0 && f.Size > maxSize {
+		return false
+	}
+	return true
+}
+
+func searchQuery(opts SearchOptions, folderID string, now time.Time) (string, error) {
+	conds := []string{"trashed = false"}
+	if opts.Query != "" {
+		field := "name"
+		if opts.Content {
+			field = "fullText"
 		}
-		allFiles = filtered
+		conds = append(conds, fmt.Sprintf("%s contains '%s'", field, escapeQuery(opts.Query)))
+	}
+	if folderID != "" {
+		conds = append(conds, fmt.Sprintf("'%s' in parents", folderID))
 	}
 
-	if opts.Limit > 0 && len(allFiles) > opts.Limit {
-		allFiles = allFiles[:opts.Limit]
+	tc, err := typeCondition(opts.Type)
+	if err != nil {
+		return "", err
+	}
+	if tc != "" {
+		conds = append(conds, tc)
 	}
 
-	return allFiles, nil
+	// Extensions are alternatives, so they OR together, parenthesised because the group joins the outer AND chain.
+	var extConds []string
+	for _, ext := range opts.Ext {
+		ext = strings.TrimPrefix(strings.TrimSpace(ext), ".")
+		if ext == "" {
+			continue
+		}
+		extConds = append(extConds, fmt.Sprintf("name contains '.%s'", escapeQuery(ext)))
+	}
+	if len(extConds) > 0 {
+		conds = append(conds, "("+strings.Join(extConds, " or ")+")")
+	}
+
+	if opts.Created != "" {
+		if err := appendTimeCond(&conds, "createdTime", opts.Created, now); err != nil {
+			return "", err
+		}
+	}
+	if opts.Modified != "" {
+		if err := appendTimeCond(&conds, "modifiedTime", opts.Modified, now); err != nil {
+			return "", err
+		}
+	}
+	return strings.Join(conds, " and "), nil
 }
 
-// parseTimeRange parses "start..end" into two date strings
-func parseTimeRange(r string) (string, string) {
-	parts := strings.SplitN(r, "..", 2)
-	if len(parts) == 2 {
-		start := normalizeDate(strings.TrimSpace(parts[0]))
-		end := normalizeDate(strings.TrimSpace(parts[1]))
-		return start, end
+func appendTimeCond(conds *[]string, field, spec string, now time.Time) error {
+	start, end, err := parseTimeSpec(spec, now)
+	if err != nil {
+		return err
 	}
-	return normalizeDate(strings.TrimSpace(r)), ""
+	*conds = append(*conds, fmt.Sprintf("%s >= '%s'", field, start.UTC().Format(time.RFC3339)))
+	if !end.IsZero() {
+		*conds = append(*conds, fmt.Sprintf("%s < '%s'", field, end.UTC().Format(time.RFC3339)))
+	}
+	return nil
 }
 
-// normalizeDate ensures a date string has T00:00:00 suffix for Drive API
-func normalizeDate(d string) string {
-	if d == "" {
-		return ""
+func typeCondition(t string) (string, error) {
+	switch t {
+	case "":
+		return "", nil
+	case "folder":
+		return "mimeType = '" + folderMIME + "'", nil
+	case "file":
+		return "mimeType != '" + folderMIME + "'", nil
+	case "doc":
+		return "mimeType = 'application/vnd.google-apps.document'", nil
+	case "sheet":
+		return "mimeType = 'application/vnd.google-apps.spreadsheet'", nil
+	case "slide":
+		return "mimeType = 'application/vnd.google-apps.presentation'", nil
+	default:
+		return "", usageErr("unknown --type %q (folder, file, doc, sheet, slide)", t)
 	}
-	if !strings.Contains(d, "T") {
-		return d + "T00:00:00"
+}
+
+func sortOrder(s string) (string, error) {
+	switch s {
+	case "", "modified":
+		return "folder,modifiedTime desc", nil
+	case "name":
+		return "folder,name", nil
+	case "size":
+		return "quotaBytesUsed desc", nil
+	default:
+		return "", usageErr("unknown --sort %q (name, modified, size)", s)
 	}
-	return d
+}
+
+// Units are binary (1024-based) to match the display formatter.
+func ParseHumanSize(s string) (int64, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0, nil
+	}
+	up := strings.ToUpper(s)
+	mult := int64(1)
+	for _, unit := range []struct {
+		suffix string
+		mult   int64
+	}{
+		{"TB", 1 << 40}, {"GB", 1 << 30}, {"MB", 1 << 20}, {"KB", 1 << 10},
+		{"T", 1 << 40}, {"G", 1 << 30}, {"M", 1 << 20}, {"K", 1 << 10}, {"B", 1},
+	} {
+		if strings.HasSuffix(up, unit.suffix) {
+			mult = unit.mult
+			up = strings.TrimSuffix(up, unit.suffix)
+			break
+		}
+	}
+	f, err := strconv.ParseFloat(strings.TrimSpace(up), 64)
+	if err != nil || f < 0 {
+		return 0, usageErr("invalid size %q (e.g. 10MB, 1.5GB, 500)", s)
+	}
+	return int64(f * float64(mult)), nil
 }
