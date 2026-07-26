@@ -11,7 +11,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -233,7 +232,7 @@ func BuildPlan(local, remote *Tree, opts PlanOptions) (*Plan, error) {
 }
 
 // foldIdx resolves a rel path to an entry differing only by case. same is the authority,
-// so a case-sensitive volume under a folding GOOS still plans two distinct entries.
+// so a case-sensitive volume still plans two same-named entries as distinct.
 type foldIdx struct {
 	byFold map[string]string
 	same   func(a, b string) bool
@@ -366,12 +365,37 @@ func collisions(items []namedID, caseFold bool) []string {
 	return out
 }
 
-func caseInsensitiveFS() bool {
-	return runtime.GOOS == "darwin" || runtime.GOOS == "windows"
+// Probes the volume instead of guessing from GOOS, which misses a vfat/exfat/casefold
+// mount under Linux and over-reports on a case-sensitive macOS volume. Files that do not
+// exist yet are the point of the pull, so the deepest existing ancestor is what answers.
+func caseInsensitiveDir(dir string) bool {
+	for {
+		if fi, err := os.Stat(dir); err == nil && fi.IsDir() {
+			break
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return false
+		}
+		dir = parent
+	}
+	f, err := os.CreateTemp(dir, "gcli-case-probe-*")
+	if err != nil {
+		return false
+	}
+	path := f.Name()
+	f.Close()
+	defer os.Remove(path)
+	alt := filepath.Join(filepath.Dir(path), strings.ToUpper(filepath.Base(path)))
+	if alt == path {
+		return false
+	}
+	_, err = os.Lstat(alt)
+	return err == nil
 }
 
-// The ground truth behind a case-only name difference, since caseInsensitiveFS is a
-// GOOS guess that a case-sensitive volume would falsify.
+// Ground truth for a case-only name difference on any platform, so it needs no probe:
+// distinct inodes on a case-sensitive volume simply answer false.
 func sameLocalFile(root, a, b string) bool {
 	ai, err := os.Lstat(filepath.Join(root, filepath.FromSlash(a)))
 	if err != nil {
@@ -458,10 +482,9 @@ type remoteDir struct {
 // buildRemoteTree lists breadth-first, folders per level concurrently. Workspace-native
 // files, shortcuts and ignored entries are dropped from the tree and returned separately;
 // the caller must pass both to PlanOptions.Protected, or the other side mirror-deletes them.
-func (c *Client) buildRemoteTree(ctx context.Context, root *driveapi.File, ignore []string, reverse bool) (*Tree, []string, []string, error) {
+func (c *Client) buildRemoteTree(ctx context.Context, root *driveapi.File, ignore []string, caseFold bool) (*Tree, []string, []string, error) {
 	tree := newTree()
 	var skipped, ignored, preflight []string
-	caseFold := reverse && caseInsensitiveFS()
 
 	level := []remoteDir{{f: root, rel: ""}}
 	for len(level) > 0 {
@@ -667,7 +690,8 @@ func (c *Client) syncFolder(ctx context.Context, p SyncParams, remoteFile *drive
 		remotePresent = false // dest missing or backed up → mirror into a fresh empty remote
 	}
 	if remotePresent {
-		if remoteTree, remoteSkipped, remoteIgnored, err = c.buildRemoteTree(ctx, remoteRoot, ignore, p.Reverse); err != nil {
+		caseFold := p.Reverse && caseInsensitiveDir(localRoot)
+		if remoteTree, remoteSkipped, remoteIgnored, err = c.buildRemoteTree(ctx, remoteRoot, ignore, caseFold); err != nil {
 			return nil, err
 		}
 	}
@@ -699,7 +723,7 @@ func (c *Client) syncFolder(ctx context.Context, p SyncParams, remoteFile *drive
 		protected[rel] = true
 	}
 	var sameLocal func(a, b string) bool
-	if p.Reverse && caseInsensitiveFS() {
+	if p.Reverse {
 		sameLocal = func(a, b string) bool { return sameLocalFile(localRoot, a, b) }
 	}
 	plan, err := BuildPlan(localTree, remoteTree, PlanOptions{

@@ -18,7 +18,15 @@ var driveFlags struct {
 var DriveCmd = &cobra.Command{
 	Use:   "drive",
 	Short: "Google Drive file operations",
+	// Runnable so cobra reaches ValidateArgs; a bare parent returns ErrHelp first and a
+	// mistyped subcommand would print help and exit 0.
+	Args: cobra.NoArgs,
+	Run:  func(cmd *cobra.Command, args []string) { _ = cmd.Help() },
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		// A parent invocation only prints help, which must work unauthenticated.
+		if cmd.HasSubCommands() {
+			return
+		}
 		client, err := auth.GetHTTPClient(cmd.Context())
 		if errors.Is(err, auth.ErrNoCredentials) {
 			u.PrintFatalCode(err.Error()+"; "+auth.NoCredentialsHint, nil, u.ExitAuth)

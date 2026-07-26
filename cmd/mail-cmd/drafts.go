@@ -15,6 +15,8 @@ var draftsCmd = &cobra.Command{
 	Use:     "drafts",
 	Aliases: []string{"draft"},
 	Short:   "Manage Gmail drafts",
+	Args:    cobra.NoArgs,
+	Run:     func(cmd *cobra.Command, args []string) { _ = cmd.Help() },
 }
 
 var draftsListFlags struct {

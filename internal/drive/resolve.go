@@ -66,6 +66,11 @@ func BatchExitCode(succeeded int, errs []error) int {
 	if len(errs) == 0 {
 		return 0
 	}
+	// A user abort outranks the work that already landed, so Ctrl+C reports 130 whether it
+	// lands mid-batch or mid-transfer rather than looking like items failed on their own.
+	if slices.ContainsFunc(errs, func(err error) bool { return errors.Is(err, context.Canceled) }) {
+		return u.ExitCancelled
+	}
 	if succeeded > 0 {
 		return u.ExitPartial
 	}

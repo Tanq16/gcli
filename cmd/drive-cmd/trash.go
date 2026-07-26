@@ -20,6 +20,8 @@ var trashEmptyFlags struct {
 var trashCmd = &cobra.Command{
 	Use:   "trash",
 	Short: "Manage trashed items",
+	Args:  cobra.NoArgs,
+	Run:   func(cmd *cobra.Command, args []string) { _ = cmd.Help() },
 }
 
 var trashListCmd = &cobra.Command{

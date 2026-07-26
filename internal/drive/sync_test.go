@@ -511,6 +511,32 @@ func TestBuildLocalTreeReportsIgnored(t *testing.T) {
 	}
 }
 
+// The probe answers for the volume, not the GOOS, and must survive a root that the pull
+// has not created yet by walking up to the deepest existing ancestor.
+func TestCaseInsensitiveDir(t *testing.T) {
+	root := t.TempDir()
+	got := caseInsensitiveDir(root)
+
+	probe := filepath.Join(root, "Probe")
+	if err := os.WriteFile(probe, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := os.Lstat(filepath.Join(root, "probe"))
+	want := err == nil
+	if got != want {
+		t.Fatalf("caseInsensitiveDir = %v, but the volume itself reports %v", got, want)
+	}
+	if entries, derr := os.ReadDir(root); derr != nil {
+		t.Fatal(derr)
+	} else if len(entries) != 1 {
+		t.Fatalf("probe left files behind: %d entries", len(entries))
+	}
+
+	if got != caseInsensitiveDir(filepath.Join(root, "not", "created", "yet")) {
+		t.Fatal("a missing root must answer for its deepest existing ancestor")
+	}
+}
+
 func TestHasAncestorIn(t *testing.T) {
 	set := map[string]bool{"a": true, "a/b": true}
 	tests := []struct {

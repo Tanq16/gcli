@@ -251,6 +251,8 @@ func TestBatchExitCode(t *testing.T) {
 		{name: "disagreeing causes fall back to partial", errs: []error{notFoundErr("a"), usageErr("b")}, want: u.ExitPartial},
 		{name: "unclassified error", errs: []error{errors.New("boom")}, want: u.ExitGeneric},
 		{name: "cancellation", errs: []error{fmt.Errorf("get: %w", context.Canceled)}, want: u.ExitCancelled},
+		{name: "abort mid-batch outranks the items that landed", succeeded: 2, errs: []error{fmt.Errorf("get: %w", context.Canceled)}, want: u.ExitCancelled},
+		{name: "abort outranks a disagreeing cause", errs: []error{notFoundErr("a"), context.Canceled}, want: u.ExitCancelled},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
